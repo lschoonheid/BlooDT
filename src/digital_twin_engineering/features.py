@@ -16,9 +16,10 @@ def window_features(
 ) -> pd.DataFrame:
     """Rolling summaries of every frame column, taken at the decision points `at`.
 
-    Level and setting channels and expert signals get their last value plus mean,
-    min, max, std and slope per window; dose channels get the amount given per
-    window; staleness columns only their current value.
+    Level and setting channels get their last value plus mean, min, max, std and
+    slope per window; expert signals (smooth by construction) only last value,
+    mean and slope; dose channels the amount given per window; staleness columns
+    only their current value.
     """
     out = {}
     for col in frame.columns:
@@ -36,9 +37,10 @@ def window_features(
             n = round(w / step_s)
             r = x.rolling(n, min_periods=1)
             out[f"x.{col}.mean{w}"] = r.mean()
-            out[f"x.{col}.min{w}"] = r.min()
-            out[f"x.{col}.max{w}"] = r.max()
-            out[f"x.{col}.std{w}"] = r.std()
+            if channel is not None:
+                out[f"x.{col}.min{w}"] = r.min()
+                out[f"x.{col}.max{w}"] = r.max()
+                out[f"x.{col}.std{w}"] = r.std()
             out[f"x.{col}.slope{w}"] = (x - x.shift(n)) / w
     return pd.DataFrame(out, index=frame.index).loc[at]
 

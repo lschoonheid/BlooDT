@@ -2,7 +2,8 @@
 
 1. Resolve the cohort and freeze its case list.
 2. Build decision-point rows for every case (cached per case).
-3. Split patients into train and test.
+3. Split patients into train and test. With a perturbation configured, a random
+   half of the training patients is seen through simulated sensor faults.
 4. Per (target, horizon): out-of-fold forecasts on train (inputs for the
    suggesters), a final forecaster on all of train, forecasts on test.
 5. Per drug: a suggester on train rows plus forecasts.
@@ -38,22 +39,33 @@ def train(config: Config, cohort: Cohort, run: str, jobs: int = 16) -> Path:
     clean, perturbed = _rows(cohort.caseids(), config, jobs)
 
     is_train, _ = splits.train_test(clean, config.test_fraction, config.seed)
-    train_patients = set(clean.subjectid[is_train])
+    test_sets = {"clean": clean[~is_train].reset_index(drop=True)}
     train_rows = clean[is_train]
-    test_sets = {"clean": clean[~is_train]}
     if perturbed is not None:
-        in_train = perturbed.subjectid.isin(train_patients)
-        # train on clean and faulty views of the same patients
-        train_rows = pd.concat([train_rows, perturbed[in_train]], ignore_index=True)
-        test_sets["perturbed"] = perturbed[~in_train]
+        train_patients = clean.subjectid[is_train].unique()
+        rng = np.random.default_rng(config.seed)
+        faulty = set(rng.choice(train_patients, len(train_patients) // 2, replace=False))
+        in_train = perturbed.subjectid.isin(set(train_patients))
+        # each training patient once: half clean, half through sensor faults
+        train_rows = pd.concat(
+            [
+                train_rows[~train_rows.subjectid.isin(faulty)],
+                perturbed[in_train & perturbed.subjectid.isin(faulty)],
+            ],
+            ignore_index=True,
+        )
+        test_sets["perturbed"] = perturbed[~in_train].reset_index(drop=True)
+    cases = int(clean.caseid.nunique())
+    del clean, perturbed
     train_rows = train_rows.reset_index(drop=True)
 
-    metrics: dict = {"cases": int(clean.caseid.nunique()), "rows_train": len(train_rows)}
+    metrics: dict = {"cases": cases, "rows_train": len(train_rows)}
     forecasters = []
     for target in config.targets:
         for h in config.horizons_s:
-            oof = forecasting.out_of_fold(train_rows, target, h, config.model, config.folds, config.seed)
-            f = forecasting.fit(train_rows, target, h, config.model)
+            f, oof = forecasting.fit_with_out_of_fold(
+                train_rows, target, h, config.model, config.folds, config.seed
+            )
             train_rows[f.output] = oof
             for name, rows in test_sets.items():
                 test_sets[name] = rows.assign(**{f.output: f.predict(rows)})

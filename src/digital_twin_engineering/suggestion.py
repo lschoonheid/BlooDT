@@ -35,7 +35,7 @@ class Suggester:
     def suggest(self, rows: pd.DataFrame) -> pd.DataFrame:
         """Columns p_decrease, p_hold, p_increase and `setting` (the setting a change
         would go to) per row."""
-        X = rows[self.features]
+        X = rows[self.features].to_numpy(np.float32)
         proba = self.classifier.predict_proba(X)
         out = pd.DataFrame(0.0, index=rows.index, columns=[f"p_{d}" for d in DIRECTIONS])
         for j, cls in enumerate(self.classifier.classes_):
@@ -53,10 +53,11 @@ def fit(
     classifier = CalibratedClassifierCV(
         _model(True, params), method="isotonic", cv=splits.folds(rows, k, seed)
     )
-    classifier.fit(rows[features], rows[direction])
-    changed = rows[direction] != "hold"
+    X = rows[features].to_numpy(np.float32)
+    classifier.fit(X, rows[direction].to_numpy())
+    changed = (rows[direction] != "hold").to_numpy()
     regressor = None
     if changed.any():
         regressor = _model(False, params)
-        regressor.fit(rows.loc[changed, features], rows.loc[changed, new])
+        regressor.fit(X[changed], rows[new].to_numpy()[changed])
     return Suggester(drug, setting, features, classifier, regressor)

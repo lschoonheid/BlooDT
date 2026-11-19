@@ -51,32 +51,52 @@ class Forecaster:
 
     def predict(self, rows: pd.DataFrame) -> np.ndarray:
         """Event probability, or the predicted value."""
-        X = rows[self.features]
+        return self._predict(rows[self.features].to_numpy(np.float32))
+
+    def _predict(self, X: np.ndarray) -> np.ndarray:
         if TARGETS[self.target].kind == "event":
             return self.model.predict_proba(X)[:, 1]
         return self.model.predict(X)
 
 
+def _fit(X: np.ndarray, y: np.ndarray, use: np.ndarray, target: str, params: dict[str, Any]):
+    """A model trained on rows `use` (indices) of X whose label is known."""
+    use = use[np.isfinite(y[use])]
+    model = _model(TARGETS[target].kind == "event", params)
+    model.fit(X[use], y[use])
+    return model
+
+
+def _arrays(rows: pd.DataFrame, target: str, horizon_s: int) -> tuple[list[str], np.ndarray, np.ndarray]:
+    """Feature names, a float32 feature matrix (one copy, reused across folds) and labels."""
+    features = feature_columns(rows)
+    X = rows[features].to_numpy(np.float32)
+    y = rows[TARGETS[target].column(horizon_s)].to_numpy(np.float64)
+    return features, X, y
+
+
 def fit(rows: pd.DataFrame, target: str, horizon_s: int, params: dict[str, Any]) -> Forecaster:
     """Train on the rows whose label is known."""
-    column = TARGETS[target].column(horizon_s)
-    known = rows[column].notna()
-    features = feature_columns(rows)
-    model = _model(TARGETS[target].kind == "event", params)
-    model.fit(rows.loc[known, features], rows.loc[known, column])
+    features, X, y = _arrays(rows, target, horizon_s)
+    model = _fit(X, y, np.arange(len(y)), target, params)
     return Forecaster(target, horizon_s, features, model)
 
 
-def out_of_fold(
+def fit_with_out_of_fold(
     rows: pd.DataFrame, target: str, horizon_s: int, params: dict[str, Any], k: int, seed: int
-) -> np.ndarray:
-    """Predictions for every row from a model that never saw that row's patient.
+) -> tuple[Forecaster, np.ndarray]:
+    """A forecaster on all rows, plus predictions for every row from a model that
+    never saw that row's patient.
 
-    Later models (the suggesters) train on these, so they learn how much to trust
-    forecasts that are as wrong as they will be on new patients.
+    Later models (the suggesters) train on the out-of-fold predictions, so they
+    learn how much to trust forecasts that are as wrong as they will be on new
+    patients.
     """
+    features, X, y = _arrays(rows, target, horizon_s)
     pred = np.full(len(rows), np.nan)
     for train_idx, val_idx in splits.folds(rows, k, seed):
-        f = fit(rows.iloc[train_idx], target, horizon_s, params)
-        pred[val_idx] = f.predict(rows.iloc[val_idx])
-    return pred
+        model = _fit(X, y, train_idx, target, params)
+        f = Forecaster(target, horizon_s, features, model)
+        pred[val_idx] = f._predict(X[val_idx])
+    model = _fit(X, y, np.arange(len(y)), target, params)
+    return Forecaster(target, horizon_s, features, model), pred
