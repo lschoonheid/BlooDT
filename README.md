@@ -25,10 +25,11 @@ tail -f data/vitaldb-download.log
 Terms are defined in [GLOSSARY.md](GLOSSARY.md); design decisions in [docs/adr/](docs/adr/).
 
 ```bash
-uv run dte inventory                          # once: which tracks every case has (~6 min)
+uv run dte inventory                          # once: tracks per case + drugs actually given (~12 min)
 uv run dte coverage                           # share of cases with each channel
 uv run dte explore map bis hr propofol_dose --by department optype   # largest consistent groups
 uv run dte cohort cohorts/tiva-artline.yaml   # resolve and freeze a cohort's case list
+uv run dte verify configs/default.yaml cohorts/smoke.yaml   # experts vs pump models and vitals
 uv run dte train configs/default.yaml cohorts/tiva-artline.yaml --run first
 uv run dte train configs/smoke.yaml cohorts/smoke.yaml --run smoke   # ~30 s end-to-end check
 uv run pytest
@@ -44,5 +45,6 @@ Stages (each cached per case under `data/derived/`, keyed by its config):
 | `labels`, `targets` | hypotension events, interventions, forecast targets (add vitals in `TARGETS`) |
 | `features`, `dataset` | decision-point rows: windowed features, covariates, labels |
 | `forecasting`, `suggestion` | one LightGBM per (target, horizon); per-drug intervention suggesters |
+| `verification` | expert fidelity: Ce vs the pumps' own models, BIS/MAP vs measured |
 | `evaluation`, `pipeline` | patient-split training, baselines, metrics in `models/<run>/` |
 | `live` | outline of the replayer and twin services (`docker-compose.yml`) |

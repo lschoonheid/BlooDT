@@ -3,6 +3,9 @@
 Each stage writes `DERIVED_DIR/<stage>/<config hash>/<caseid>.parquet` plus a
 `config.json` describing the hash, so changing a stage's config recomputes it while
 other configs' results stay on disk.
+
+The cache can't see code changes: bump VERSION whenever a change alters what a
+stage computes (e.g. how channels are gridded or labels defined).
 """
 
 import hashlib
@@ -18,10 +21,11 @@ DERIVED_DIR = Path(
     os.environ.get("DTE_DERIVED_DIR")
     or Path(__file__).resolve().parents[2] / "data" / "derived"
 )
+VERSION = 3  # 3: pump volumes rate-limited; glitches ignored, persistent jumps re-based
 
 
 def config_hash(config: Mapping[str, Any]) -> str:
-    blob = json.dumps(config, sort_keys=True, default=str)
+    blob = json.dumps({"version": VERSION, **config}, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:12]
 
 

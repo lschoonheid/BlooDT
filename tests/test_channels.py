@@ -4,12 +4,37 @@ from digital_twin_engineering.channels import CHANNELS, Perturbation, cumulative
 
 
 def test_cumulative_dose_ignores_jitter_and_survives_resets():
-    # 0.18 mL downward jitter (seen in VitalDB) is not a reset; a drop to 0 is
-    v = np.array([0, 5, 8.69, 8.52, 9.71, 12.0, 0.0, 1.0, 3.0])
-    total = cumulative_dose(v)
+    # 0.18 mL downward jitter (seen in VitalDB) is not a reset; a lasting drop to 0 is
+    v = np.array([0, 0.3, 0.69, 0.52, 0.91, 1.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.3])
+    total = cumulative_dose(np.arange(len(v)), v)
     assert np.all(np.diff(total) >= 0)
-    assert total[5] == 12.0
-    assert total[-1] == 12.0 + 3.0
+    assert total[5] == 1.2
+    assert np.isclose(total[-1], 1.2 + 0.3)
+
+
+def test_reset_to_a_nonzero_volume_counts_only_new_growth():
+    # case 7: RFTN20_VOL drops 65.09 -> 17.92 and carries on from there
+    v = np.array([65.0, 65.09, 17.92, 17.92, 17.93, 17.93, 17.93, 18.1])
+    total = cumulative_dose(np.arange(len(v)), v)
+    assert np.isclose(total[-1], 65.09 + (18.1 - 17.92))
+
+
+def test_a_one_off_glitch_to_zero_is_not_a_reset():
+    v = np.array([10.0, 10.1, 0.0, 10.2, 10.3, 10.4, 10.5, 10.6])
+    assert np.isclose(cumulative_dose(np.arange(len(v)), v)[-1], 10.6)
+
+
+def test_impossible_spikes_are_ignored():
+    # case 926: one reading of 249037.83 mL between ~13 mL readings
+    t = np.array([0.0, 187, 188, 189, 190, 191, 192, 193])
+    v = np.array([12.48, 249037.83, 13.88, 13.88, 13.89, 13.89, 13.9, 13.9])
+    assert np.isclose(cumulative_dose(t, v)[-1], 13.9)
+
+
+def test_persistent_impossible_jump_is_rebased_not_counted():
+    t = np.arange(10.0)
+    v = np.array([5.0, 5.1, 900.0, 900.0, 900.1, 900.1, 900.2, 900.2, 900.3, 900.3])
+    assert np.isclose(cumulative_dose(t, v)[-1], 5.1 + 0.3)
 
 
 def test_level_grid_is_causal_and_reports_staleness():
@@ -43,9 +68,9 @@ def test_nothing_known_before_the_first_record():
 def test_dose_grid_conserves_total_across_gaps():
     # a 100 s gap in VOL readings: the dose arrives when the next reading does
     t = np.array([0.0, 1, 2, 102, 103])
-    v = np.array([0.0, 1, 2, 12, 13])
-    values, _ = to_grid(CHANNELS["propofol_dose"], t, v * 20, np.arange(0, 110.0))
-    assert np.isclose(values.sum(), 13 * 20)
+    v = np.array([0.0, 0.3, 0.6, 20.0, 20.3])
+    values, _ = to_grid(CHANNELS["propofol_dose"], t, v, np.arange(0, 110.0), factor=20)
+    assert np.isclose(values.sum(), 20.3 * 20)
     assert values[50] == 0
 
 

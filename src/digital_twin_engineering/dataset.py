@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from . import experts, stages
-from .channels import load_channels
+from .channels import CHANNELS, load_channels
 from .config import Config
 from .features import covariate_features, phase_features, window_features
 from .labels import detect_interventions
@@ -34,6 +34,13 @@ def case_frame(caseid: int, config: Config, perturbed: bool = False) -> pd.DataF
             seed=config.seed * 100_000 + caseid,
         )
         built = [experts.build(spec) for spec in config.experts]
+        if perturbed:
+            # perturbations only touch level channels; experts reading none of them
+            # would compute exactly what they did on the clean frame
+            clean = case_frame(caseid, config)
+            reuse = [e for e in built if not any(CHANNELS[n].kind == "level" for n in e.inputs)]
+            built = [e for e in built if e not in reuse]
+            frame = frame.join(clean[[c for e in reuse for c in clean if c.startswith(e.name + ".")]])
         signals = experts.run(built, frame, covariates(caseid), config.step_s)
         return frame.join(signals)
 

@@ -2,6 +2,8 @@
 channels: [map, sbp, dbp, hr, bis, sqi, spo2, etco2, propofol_ce_pump, remifentanil_ce_pump]
 
 experts:
+  # Marsh_modified + Minto is what the Orchestra pumps run; it verifies our doses
+  - {kind: pas, name: pas_marsh, model_propo: Marsh_modified, model_remi: Minto, model_bis: Bouillon}
   - {kind: pas, name: pas_schnider, model_propo: Schnider, model_remi: Minto, model_bis: Bouillon}
   - {kind: pas, name: pas_eleveld, model_propo: Eleveld, model_remi: Eleveld, model_bis: Eleveld}
   - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified}
@@ -11,7 +13,9 @@ targets: [map, bis, hypotension]
 horizons_s: [300]
 
 step_s: 1
-decision_every_s: 10
+# 10 s gives ~9 GB of rows for the 1,585-case TIVA cohort (x2 with perturbation),
+# too much for 32 GB RAM; neighbouring points are near-duplicates anyway.
+decision_every_s: 30
 features:
   windows_s: [60, 300, 900, 1800]
 

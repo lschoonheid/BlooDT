@@ -6,7 +6,7 @@ import sys
 import pandas as pd
 
 from . import cohort as cohorts
-from . import dataset, inventory, pipeline
+from . import dataset, inventory, pipeline, verification
 from .channels import CHANNELS
 from .config import Config
 
@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="dte", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("inventory", help="scan every case's track list (once, ~minutes)")
+    p = sub.add_parser("inventory", help="scan every case's tracks and drug usage (once, ~15 min)")
     p.add_argument("-j", "--jobs", type=int, default=16)
 
     p = sub.add_parser("coverage", help="share of cases that have each channel")
@@ -36,6 +36,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--perturbed", action="store_true")
     p.add_argument("-j", "--jobs", type=int, default=16)
 
+    p = sub.add_parser("verify", help="expert fidelity vs the pumps' models and measured vitals")
+    p.add_argument("config")
+    p.add_argument("cohort")
+    p.add_argument("-j", "--jobs", type=int, default=16)
+
     p = sub.add_parser("train", help="train and evaluate forecasters and suggesters")
     p.add_argument("config")
     p.add_argument("cohort")
@@ -51,6 +56,8 @@ def main(argv: list[str] | None = None) -> None:
         case "inventory":
             df = inventory.build(args.jobs)
             print(f"{df.caseid.nunique()} cases, {df.track.nunique()} distinct tracks -> {inventory.PATH}")
+            used = inventory.build_usage(args.jobs)
+            print(f"drug usage of {len(used)} cases -> {inventory.USAGE_PATH}")
         case "coverage":
             print(cohorts.channel_coverage(base).to_string(float_format="{:.1%}".format))
         case "explore":
@@ -62,6 +69,9 @@ def main(argv: list[str] | None = None) -> None:
         case "dataset":
             rows = dataset.build(base.caseids(), Config.from_yaml(args.config), args.perturbed, args.jobs)
             print(f"{len(rows)} rows from {rows.caseid.nunique()} cases, {rows.shape[1]} columns")
+        case "verify":
+            per_case = verification.fidelity(base.caseids(), Config.from_yaml(args.config), args.jobs)
+            print(verification.summary(per_case).to_string(float_format="{:.2f}".format))
         case "train":
             out = pipeline.train(Config.from_yaml(args.config), base, args.run, args.jobs)
             print(f"models and metrics -> {out}")

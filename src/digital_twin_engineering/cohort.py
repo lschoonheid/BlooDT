@@ -6,6 +6,7 @@ A cohort is a YAML file under `cohorts/`:
     channels: [map, bis, hr, propofol_dose, remifentanil_dose]   # required
     where:
       ane_type: General                  # equals
+      agents: propofol+remifentanil      # anaesthetics actually given (see inventory.AGENTS)
       department: [General surgery, Thoracic surgery]   # one of
       age: {min: 18}                     # range, inclusive
     query: "weight > 40"                 # optional pandas query on clinical_data
@@ -29,15 +30,6 @@ from .stages import DERIVED_DIR
 
 REQUIRED_COVARIATES = ["age", "sex", "height", "weight"]
 
-# Derived grouping column for `explore`: which anaesthetic drugs a case received.
-_AGENT_CHANNELS = {
-    "propofol": "propofol_dose",
-    "remifentanil": "remifentanil_dose",
-    "sevoflurane": "sevoflurane_et",
-    "desflurane": "desflurane_et",
-}
-
-
 @dataclass(frozen=True)
 class Cohort:
     name: str
@@ -57,6 +49,8 @@ class Cohort:
         df = clinical()
         df = df[df[REQUIRED_COVARIATES].notna().all(axis=1)]
         df = df[(df.aneend - df.anestart) >= self.min_duration_s]
+        if "agents" in self.where:
+            df = df.assign(agents=inventory.agents(df.index))
         for column, condition in self.where.items():
             df = df[_matches(df[column], condition)]
         if self.query:
@@ -90,15 +84,6 @@ def _matches(column: pd.Series, condition: Any) -> pd.Series:
     return column == condition
 
 
-def agents(caseids: pd.Index) -> pd.Series:
-    """Which anaesthetics each case received, e.g. "propofol+remifentanil"."""
-    cov = inventory.coverage(list(_AGENT_CHANNELS.values())).reindex(caseids, fill_value=False)
-    return cov.apply(
-        lambda row: "+".join(a for a, ch in _AGENT_CHANNELS.items() if row[ch]) or "none",
-        axis=1,
-    )
-
-
 def explore(
     channels: list[str],
     by: list[str] = ["department", "optype", "agents"],
@@ -106,12 +91,13 @@ def explore(
 ) -> pd.DataFrame:
     """How many cases and patients have all `channels`, per group, largest first.
 
-    `by` takes clinical_data columns plus the derived `agents`. `base` restricts the
-    search to an existing cohort's criteria.
+    `by` takes clinical_data columns plus `agents`, the anaesthetics actually
+    given. `base` restricts the search to an existing cohort's criteria.
     """
     base = base or Cohort("explore")
     df = Cohort(base.name, tuple(channels), base.where, base.query, base.min_duration_s).cases()
-    df = df.assign(agents=agents(df.index))
+    if "agents" in by and "agents" not in df:
+        df = df.assign(agents=inventory.agents(df.index))
     counts = df.groupby(by, dropna=False).agg(
         cases=("subjectid", "size"), patients=("subjectid", "nunique")
     )

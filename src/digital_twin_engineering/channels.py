@@ -21,6 +21,9 @@ import pandas as pd
 from . import vitaldb_cache as vdb
 
 STALENESS = "__staleness"
+_RESET_PERSISTS = 5  # readings a pump volume jump must last to count as a re-base
+_MAX_PUMP_ML_PER_S = 1200 / 3600  # Orchestra pumps' maximum rate
+_JITTER_ML = 0.5
 _KPA_TO_VOL_PERCENT = 100 / 101.325
 
 
@@ -111,21 +114,36 @@ class Perturbation:
         return t, v
 
 
-def cumulative_dose(v: np.ndarray) -> np.ndarray:
-    """Total volume infused so far, from a pump's VOL readings.
+def cumulative_dose(t: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Total volume (mL) infused so far, from a pump's VOL readings at times `t`.
 
-    The readings jitter downwards by a fraction of a mL and reset to zero when a
-    syringe or the pump is restarted. A drop of more than half is taken as a reset;
-    within a segment the volume can only grow.
+    Seen in VitalDB: readings jitter down by ~0.2 mL; counters drop when a syringe
+    or pump is restarted, not always to zero (65.09 -> 17.92); and single readings
+    are wild (249037.83 between two ~13 mL readings). So the volume only counts a
+    rise a pump could deliver (at most _MAX_PUMP_ML_PER_S); small drops are
+    jitter; any other jump is a glitch unless it persists for _RESET_PERSISTS
+    readings, in which case the counter is re-based without counting the jump.
     """
-    if len(v) == 0:
-        return v
-    reset = np.flatnonzero(v[1:] < 0.5 * v[:-1]) + 1
-    total = np.empty_like(v)
-    offset = 0.0
-    for seg in np.split(np.arange(len(v)), reset):
-        total[seg] = offset + np.maximum.accumulate(v[seg])
-        offset = total[seg[-1]]
+    total = np.empty(len(v))
+    level, last_t, offset = (v[0], t[0], 0.0) if len(v) else (0.0, 0.0, 0.0)
+
+    def plausible(x, x_t, base, base_t):
+        rise = x - base
+        return -_JITTER_ML <= rise <= _MAX_PUMP_ML_PER_S * (x_t - base_t) + _JITTER_ML
+
+    for i, (x, x_t) in enumerate(zip(v, t)):
+        if not np.isfinite(x):
+            pass
+        elif plausible(x, x_t, level, last_t):
+            if x > level:
+                level = x
+            last_t = x_t
+        else:
+            after = slice(i + 1, i + 1 + _RESET_PERSISTS)
+            if all(plausible(y, y_t, x, x_t) for y, y_t in zip(v[after], t[after])):
+                offset += level - x
+                level, last_t = x, x_t
+        total[i] = offset + level
     return total
 
 
@@ -137,12 +155,14 @@ def resolve(names: list[str], available: set[str]) -> dict[str, str | None]:
 
 
 def to_grid(
-    channel: Channel, t: np.ndarray, v: np.ndarray, grid: np.ndarray
+    channel: Channel, t: np.ndarray, v: np.ndarray, grid: np.ndarray, factor: float = 1.0
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Values and staleness of one channel's records (times `t`, sorted) on `grid`."""
+    """Values and staleness of one channel's raw records (times `t`, sorted) on
+    `grid`, converted to the channel's unit by `factor`."""
     if channel.kind == "dose":
-        v = cumulative_dose(v)
+        v = cumulative_dose(t, v) * factor
     else:
+        v = v * factor
         ok = np.isfinite(v) & (v >= channel.valid[0]) & (v <= channel.valid[1])
         t, v = t[ok], v[ok]
     idx = np.searchsorted(t, grid, side="right") - 1
@@ -184,10 +204,11 @@ def load_channels(
             continue
         recs = vf.find_track(track).recs
         t = np.array([r["dt"] for r in recs], float) - vf.dtstart
-        v = np.array([r["val"] for r in recs], float) * dict(channel.tracks)[track]
+        v = np.array([r["val"] for r in recs], float)
         order = np.argsort(t, kind="stable")
         t, v = t[order], v[order]
         if perturbation is not None and channel.kind == "level":
             t, v = perturbation.apply(t, v, rng)
-        cols[name], cols[name + STALENESS] = to_grid(channel, t, v, grid)
+        factor = dict(channel.tracks)[track]
+        cols[name], cols[name + STALENESS] = to_grid(channel, t, v, grid, factor)
     return pd.DataFrame(cols, index=pd.Index(grid, name="t"))
