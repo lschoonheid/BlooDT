@@ -1,0 +1,19 @@
+[project]
+name = "digital-twin-engineering"
+version = "0.1.0"
+description = "Digital twin engineering on the VitalDB dataset"
+readme = "README.md"
+authors = [
+    { name = "Laszlo Schoonheid", email = "lschoonheid@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "vitaldb>=1.7.2",
+]
+
+[project.scripts]
+vitaldb-cache = "digital_twin_engineering.vitaldb_cache:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
