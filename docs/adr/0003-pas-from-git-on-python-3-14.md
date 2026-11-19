@@ -1,0 +1,3 @@
+# PAS pinned to a git commit, with dependency overrides, on Python 3.14
+
+We use the Python Anesthesia Simulator (PAS) from GitHub commit `4f9509f` instead of PyPI. PyPI's 1.0.0 lacks the Eleveld BIS and VitalDB haemodynamic models and pins `control==0.9.4`, which breaks on numpy 2; GitHub main after `4f9509f` fails to import (its `__init__` imports a `Simulator` class that no longer exists). The commit pins `scipy==1.16.0`, which has no Python 3.14 wheels, so `pyproject.toml` overrides it to a newer scipy. We kept Python 3.14 rather than dropping to 3.12 because these two overrides were enough. Revisit when PAS publishes a 2.x release. PAS is GPLv3, so distributing this project means distributing it under the GPL.

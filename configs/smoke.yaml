@@ -1,0 +1,14 @@
+# Tiny, fast config for checking the pipeline end to end on a few cases.
+channels: [map, hr, bis]
+experts:
+  - {kind: pas, name: pas_schnider}
+  - {kind: anesthesim, name: asim_greco}
+targets: [map, hypotension]
+horizons_s: [300]
+decision_every_s: 30
+features:
+  windows_s: [60, 300]
+perturbation: {max_delay_s: 10, dropouts_per_hour: 4}
+model: {n_estimators: 50}
+folds: 2
+test_fraction: 0.3

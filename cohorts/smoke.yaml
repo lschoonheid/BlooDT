@@ -1,0 +1,8 @@
+# A dozen TIVA cases, for configs/smoke.yaml.
+name: smoke
+channels: [map, bis, hr, propofol_dose, remifentanil_dose, propofol_target, remifentanil_target]
+where:
+  ane_type: General
+  age: {min: 18}
+query: "caseid <= 60"
+min_duration_s: 3600

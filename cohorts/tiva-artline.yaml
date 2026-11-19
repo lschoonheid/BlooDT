@@ -1,0 +1,7 @@
+# The plan's cohort: adult TIVA cases with an arterial line, BIS and both pumps.
+name: tiva-artline
+channels: [map, bis, hr, propofol_dose, remifentanil_dose, propofol_target, remifentanil_target]
+where:
+  ane_type: General
+  age: {min: 18}
+min_duration_s: 3600

@@ -1,0 +1,31 @@
+# Live stack (outline): the replayer and twin services are added once
+# src/digital_twin_engineering/live/ is implemented.
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    command: mosquitto -c /mosquitto-no-auth.conf
+
+  influxdb:
+    image: influxdb:2
+    ports: ["8086:8086"]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: twin
+      DOCKER_INFLUXDB_INIT_PASSWORD: twin-password
+      DOCKER_INFLUXDB_INIT_ORG: twin
+      DOCKER_INFLUXDB_INIT_BUCKET: twin
+    volumes: [influxdb:/var/lib/influxdb2]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports: ["3000:3000"]
+    depends_on: [influxdb]
+    volumes: [grafana:/var/lib/grafana]
+
+  # replayer:   uv run python -m digital_twin_engineering.live.replayer <caseid>
+  # twin:       uv run python -m digital_twin_engineering.live.twin models/<run>
+
+volumes:
+  influxdb:
+  grafana:

@@ -1,0 +1,3 @@
+# Interventions on TCI pumps are target-concentration changes, not rate changes
+
+VitalDB's propofol and remifentanil pumps (Orchestra) mostly run in TCI mode: the clinician sets a target concentration (`*_CT`) and the pump adjusts the rate every second by itself. Labelling rate changes would label the pump's controller, not the clinician, so for TCI drugs an intervention is a sustained change of the target, and suggestions are phrased as a new target. For rate-mode pumps without a target track (vasopressors) the rate is the clinician's setting and is labelled instead. Boluses are recorded only as per-case totals and cannot be labelled.

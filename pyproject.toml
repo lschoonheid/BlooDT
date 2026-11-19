@@ -8,12 +8,30 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "lightgbm>=4.7.0",
+    "pyarrow>=26.0.1",
+    "python-anesthesia-simulator",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.9.1",
     "vitaldb>=1.7.2",
 ]
 
 [project.scripts]
 vitaldb-cache = "digital_twin_engineering.vitaldb_cache:main"
+dte = "digital_twin_engineering.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.uv]
+# PAS main pins scipy==1.16.0 (no Python 3.14 wheels); PAS 1.0.0 pinned control==0.9.4 (breaks on numpy 2).
+override-dependencies = ["control>=0.10.1", "scipy>=1.16"]
+
+[tool.uv.sources]
+python-anesthesia-simulator = { git = "https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator", rev = "4f9509f" }

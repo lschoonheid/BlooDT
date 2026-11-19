@@ -1,0 +1,35 @@
+# Pipeline configuration; see src/digital_twin_engineering/config.py for every field.
+channels: [map, sbp, dbp, hr, bis, sqi, spo2, etco2, propofol_ce_pump, remifentanil_ce_pump]
+
+experts:
+  - {kind: pas, name: pas_schnider, model_propo: Schnider, model_remi: Minto, model_bis: Bouillon}
+  - {kind: pas, name: pas_eleveld, model_propo: Eleveld, model_remi: Eleveld, model_bis: Eleveld}
+  - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified}
+
+# Add or remove a vital here (and in targets.TARGETS if it's new), then retrain.
+targets: [map, bis, hypotension]
+horizons_s: [300]
+
+step_s: 1
+decision_every_s: 10
+features:
+  windows_s: [60, 300, 900, 1800]
+
+suggestion:
+  drugs: {propofol: propofol_target, remifentanil: remifentanil_target}
+  window_s: 60
+  min_hold_s: 30
+  min_relative_change: 0.05
+
+# Simulated sensor faults for training; set to null to train on clean data only.
+perturbation:
+  max_delay_s: 10
+  dropouts_per_hour: 4
+  mean_dropout_s: 30
+
+# LightGBM overrides, e.g. {n_estimators: 800}. {device_type: gpu} trains on the
+# GPU via OpenCL (works on the RX 7900; only ~15% faster than 16 CPU threads).
+model: {}
+folds: 5
+test_fraction: 0.2
+seed: 0

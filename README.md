@@ -19,3 +19,30 @@ uv run vitaldb-cache download 1 2 3
 ./download_vitaldb_daemon.sh             # background systemd user service
 tail -f data/vitaldb-download.log
 ```
+
+## Pipeline
+
+Terms are defined in [GLOSSARY.md](GLOSSARY.md); design decisions in [docs/adr/](docs/adr/).
+
+```bash
+uv run dte inventory                          # once: which tracks every case has (~6 min)
+uv run dte coverage                           # share of cases with each channel
+uv run dte explore map bis hr propofol_dose --by department optype   # largest consistent groups
+uv run dte cohort cohorts/tiva-artline.yaml   # resolve and freeze a cohort's case list
+uv run dte train configs/default.yaml cohorts/tiva-artline.yaml --run first
+uv run dte train configs/smoke.yaml cohorts/smoke.yaml --run smoke   # ~30 s end-to-end check
+uv run pytest
+```
+
+Stages (each cached per case under `data/derived/`, keyed by its config):
+
+| Module | Does |
+|---|---|
+| `channels` | tracks -> logical channels on a causal 1 s grid with staleness; training-time sensor faults |
+| `inventory`, `cohort` | which cases have which channels; cohort YAMLs and the explorer |
+| `experts` | PAS and AnestheSIM (ported) models stepped through each case |
+| `labels`, `targets` | hypotension events, interventions, forecast targets (add vitals in `TARGETS`) |
+| `features`, `dataset` | decision-point rows: windowed features, covariates, labels |
+| `forecasting`, `suggestion` | one LightGBM per (target, horizon); per-drug intervention suggesters |
+| `evaluation`, `pipeline` | patient-split training, baselines, metrics in `models/<run>/` |
+| `live` | outline of the replayer and twin services (`docker-compose.yml`) |

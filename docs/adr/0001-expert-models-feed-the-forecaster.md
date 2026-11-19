@@ -1,0 +1,3 @@
+# Expert models feed the forecaster; no gated mixture of experts
+
+The mechanistic expert models (PAS and AnestheSIM configurations) run alongside each case, and their expert signals become inputs to learned forecasters, next to the raw tracks and patient covariates. We considered a true mixture of experts, where a gating network weights each expert's prediction, but the experts don't all predict the same targets (some give drug levels, some BIS, some MAP), and treating them as features lets the forecaster learn how much to trust each one without a separate gate. The term "mixture of experts" is therefore avoided in this project.

@@ -1,0 +1,57 @@
+"""Targets: what forecasters predict. Add a vital by adding an entry to TARGETS.
+
+A "value" target is a channel's observed value one horizon ahead; an "event" target
+is whether an event (a boolean mask over the case) is ongoing at any time within the
+next horizon. Each (target, horizon) pair gets its own forecaster.
+"""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal
+
+import pandas as pd
+
+from .channels import STALENESS
+from .labels import hypotension_mask
+
+
+@dataclass(frozen=True)
+class Target:
+    name: str
+    channel: str
+    kind: Literal["value", "event"]
+    event: Callable[[pd.Series], pd.Series] | None = None  # for "event": channel -> mask
+    max_staleness_s: float = 10  # "value": the future observation must be this fresh
+
+    def label(self, frame: pd.DataFrame, horizon_s: float, step_s: float = 1) -> pd.Series:
+        """The label at every grid point of a case frame (NaN where unknown)."""
+        n = round(horizon_s / step_s)
+        x = frame[self.channel]
+        if self.kind == "value":
+            future = x.shift(-n)
+            fresh = frame[self.channel + STALENESS].shift(-n) <= self.max_staleness_s
+            return future.where(fresh)
+        mask = self.event(x).astype(float)
+        # any event in (t, t + horizon]: rolling max over the reversed, shifted series
+        ahead = mask[::-1].rolling(n, min_periods=1).max()[::-1].shift(-1)
+        observed = x.notna().astype(float)[::-1].rolling(n, min_periods=1).max()[::-1].shift(-1)
+        return ahead.where(observed > 0)
+
+    def column(self, horizon_s: float) -> str:
+        return f"y.{self.name}@{int(horizon_s)}"
+
+
+TARGETS = {
+    t.name: t
+    for t in [
+        Target("map", "map", "value"),
+        Target("bis", "bis", "value"),
+        Target("hr", "hr", "value"),
+        Target("hypotension", "map", "event", event=hypotension_mask),
+    ]
+}
+
+
+def is_classification(name: str) -> bool:
+    return TARGETS[name].kind == "event"
+
