@@ -35,7 +35,6 @@ from .suggestion import label_columns
 
 HORIZONS_S = (180, 300, 600)
 SIGNALS = ("bis", "map", "hr")
-NEVER = 10**9  # lookahead period: Runner keeps the held inputs; effects are asked for explicitly
 
 
 def changes(rows: pd.DataFrame, drugs: dict[str, str]) -> pd.DataFrame:
@@ -64,16 +63,14 @@ def changes(rows: pd.DataFrame, drugs: dict[str, str]) -> pd.DataFrame:
 def case_effects(caseid: int, config: Config, spec: dict, todo: pd.DataFrame) -> pd.DataFrame:
     """The expert's expected effect of each change in `todo` (one case's rows)."""
     frame = dataset.case_channels(caseid, config)
-    runner = experts.Runner(
-        experts.build(spec), covariates(caseid), config.step_s, experts.Lookahead(HORIZONS_S, NEVER)
-    )
+    runner = experts.Runner(experts.build(spec), covariates(caseid), config.step_s)
     inputs = {n: frame[n].to_numpy() for n in runner.expert.inputs}
     at = {t: g for t, g in todo.groupby("t")}
     out = []
     for i, t in enumerate(frame.index.to_numpy()):
-        runner.step(t, {n: v[i] for n, v in inputs.items()})
+        runner.step({n: v[i] for n, v in inputs.items()})
         for _, c in at.get(t, pd.DataFrame()).iterrows():
-            effect = runner.effect(c.drug, c.new, c.current)
+            effect = runner.effect(c.drug, c.new, c.current, HORIZONS_S)
             if effect:
                 out.append({"caseid": caseid, "t": t, "drug": c.drug} | {f"effect.{k}": v for k, v in effect.items()})
         if t >= todo.t.max():

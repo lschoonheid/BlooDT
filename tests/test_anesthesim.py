@@ -193,15 +193,3 @@ def test_bis_calibration_ignores_stale_and_implausible_readings():
         e.step(dose | {"bis": 20.0, "bis__staleness": 5.0})
         y = e.step(dose | {"bis": 0.0, "bis__staleness": 0.0})
     assert y["bis_sensitivity"] == 1.0
-
-
-def test_map_calibration_scales_the_propofol_effect():
-    dose = NO_DRUG | dict(propofol_dose=0.15)
-    e = AnestheSimExpert("c", map_model="unified", calibrate_map=True)
-    e.reset(PATIENT, 1.0)
-    map0 = covariate_map0(PATIENT, PATIENT.weight / 1.75**2)
-    for _ in range(3600):
-        y = e.step(dose | {"map": map0 - 5.0, "map__staleness": 0.0})  # a far smaller drop than modelled
-    assert y["map_sensitivity"] < 0.5
-    with pytest.raises(ValueError):
-        AnestheSimExpert("s", map_model="separable", calibrate_map=True)

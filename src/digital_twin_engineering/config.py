@@ -32,10 +32,10 @@ class SuggestionConfig:
 class Config:
     channels: tuple[str, ...]
     experts: tuple[dict[str, Any], ...] = ()
-    # experts that can forecast do so this far ahead at each decision point
-    expert_lookahead_s: tuple[int, ...] = ()
     targets: tuple[str, ...] = ("map", "bis", "hypotension")
     horizons_s: tuple[int, ...] = (300,)
+    # how far ahead the twin gives the expected effect of each suggested target change
+    effect_horizons_s: tuple[int, ...] = (300,)
     step_s: float = 1.0
     decision_every_s: int = 10
     features: FeatureConfig = FeatureConfig()
@@ -54,7 +54,7 @@ class Config:
     def from_dict(cls, spec: dict[str, Any]) -> "Config":
         """From a YAML config's contents, or `asdict` of a Config (as in a run's config.json)."""
         spec = dict(spec)
-        for key in ("channels", "experts", "expert_lookahead_s", "targets", "horizons_s"):
+        for key in ("channels", "experts", "targets", "horizons_s", "effect_horizons_s"):
             if key in spec:
                 spec[key] = tuple(spec[key])
         if "features" in spec:
@@ -77,11 +77,6 @@ class Config:
         needed += list(self.suggestion.drugs.values())
         return tuple(dict.fromkeys(needed))
 
-    def lookahead(self):
-        from .experts import Lookahead
-
-        return Lookahead(self.expert_lookahead_s, self.decision_every_s) if self.expert_lookahead_s else None
-
     def channels_key(self, perturbed: bool) -> dict[str, Any]:
         """The parts of the config a case's channel grid depends on (its cache key)."""
         return {
@@ -96,7 +91,6 @@ class Config:
         perturbed independently, so the other channels loaded don't matter."""
         from . import experts
 
-        lookahead = self.lookahead()
         version = getattr(experts.kinds()[spec["kind"]], "version", 0)
         return {
             **({"code": version} if version else {}),
@@ -104,7 +98,6 @@ class Config:
             "step_s": self.step_s,
             "perturbation": asdict(self.perturbation) if perturbed and self.perturbation else None,
             "seed": self.seed,
-            "lookahead": asdict(lookahead) if lookahead else None,
         }
 
     def rows_key(self, perturbed: bool) -> dict[str, Any]:

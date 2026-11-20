@@ -65,7 +65,7 @@ class Twin:
         self.dose_seen: dict[str, float] = {}  # dose -> time of the last resolved reading
         self.dose_total = dict.fromkeys(self.counters, np.nan)
         self.runners = [
-            experts.Runner(experts.build(spec), covariates, config.step_s, config.lookahead())
+            experts.Runner(experts.build(spec), covariates, config.step_s)
             for spec in config.experts
         ]
         longest = round(max(config.features.windows_s) / config.step_s)
@@ -93,7 +93,7 @@ class Twin:
         self.t = t
         row = self._grid_row(t)
         for runner in self.runners:
-            for k, v in runner.step(t, row).items():
+            for k, v in runner.step(row).items():
                 row[f"{runner.expert.name}.{k}"] = v
         self.buffer.append(row)
         if round(t) % self.config.decision_every_s != 0:
@@ -161,7 +161,7 @@ class Twin:
             current = float(x[f"x.{s.setting}"].iloc[0])
             for runner in self.runners:
                 effects = {
-                    d: runner.effect(s.drug, suggestion[f"setting_{d}"], current)
+                    d: runner.effect(s.drug, suggestion[f"setting_{d}"], current, self.config.effect_horizons_s)
                     for d in ("decrease", "increase")
                     if np.isfinite(suggestion[f"setting_{d}"])
                 }

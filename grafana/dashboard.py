@@ -170,7 +170,7 @@ panels = [
         [
             series("deviation", "residual", "BIS", 'r.signal == "bis"'),
             series("deviation", "residual", "HR", 'r.signal == "hr"'),
-            series("deviation", "residual", "MAP", 'r.signal == "map"'),
+            series("deviation", "residual", "1-min MAP", 'r.signal == "map_1min"'),
         ],
         pos(0, 32),
     ),

@@ -43,33 +43,17 @@ def test_pre_dose_baseline_sets_resting_map_and_hr(make):
     assert y["hr"] == pytest.approx(80, abs=0.5)
 
 
-def test_lookahead_matches_stepping_and_leaves_state_alone():
+def test_scenario_matches_stepping_and_leaves_state_alone():
     e = AnestheSimExpert("a")
     e.reset(PATIENT, 1.0)
     drip = REST | dict(propofol_dose=0.1, remifentanil_dose=0.2, norepinephrine_dose=0.05)
     for _ in range(100):
         e.step(drip)
-    ahead = e.lookahead(drip, (300, 60))
+    ahead = e.scenario(drip, (300, 60))
     following = [e.step(drip) for _ in range(300)]
-    for key in e.lookahead_signals:
+    for key in e.scenario_signals:
         assert ahead[f"{key}@60"] == pytest.approx(following[59][key])
         assert ahead[f"{key}@300"] == pytest.approx(following[299][key])
-
-
-def test_run_adds_lookahead_at_decision_points_only():
-    n = 200
-    frame = pd.DataFrame(
-        {k: np.full(n, v) for k, v in REST.items()}, index=pd.Index(np.arange(n, dtype=float), name="t")
-    )
-    frame["propofol_dose"] = 0.1
-    out = experts.run([AnestheSimExpert("a")], frame, PATIENT, 1.0, experts.Lookahead((60,), 30))
-    ahead = out["a.bis@60"]
-    assert ahead.notna().all()
-    # carried forward between decision points
-    assert (ahead.iloc[30:60] == ahead.iloc[30]).all()
-    assert ahead.iloc[60] != ahead.iloc[30]
-    # what the model says 60 s later, holding the same drip
-    assert ahead.iloc[90] == pytest.approx(out["a.bis"].iloc[150], abs=1e-6)
 
 
 def test_tci_reaches_and_holds_its_target():
@@ -89,18 +73,19 @@ def test_tci_reaches_and_holds_its_target():
     assert e._tci_rate("propofol", 1.5) == 0  # pauses to come down
 
 
-def test_whatif_raising_propofol_deepens_and_lowers_pressure():
-    e = AnestheSimExpert("a", whatif=(0.8, 1.2))
-    e.reset(PATIENT, 1.0)
-    inputs = REST | dict(propofol_target=3.0, remifentanil_target=2.0)
+def test_effect_of_raising_propofol_deepens_and_lowers_pressure():
+    runner = experts.Runner(AnestheSimExpert("a"), PATIENT, 1.0)
+    e = runner.expert
+    inputs = dict(REST)
     for _ in range(900):
         inputs["propofol_dose"] = e._tci_rate("propofol", 3.0)
         inputs["remifentanil_dose"] = e._tci_rate("remifentanil", 2.0)
-        e.step(inputs)
-    ahead = e.lookahead(inputs, (300,))
-    assert set(ahead) == set(e.lookahead_columns((300,)))
-    assert ahead["bis@300.propofol_x1.2"] < ahead["bis@300"] < ahead["bis@300.propofol_x0.8"]
-    assert ahead["map@300.propofol_x1.2"] < ahead["map@300.propofol_x0.8"]
-    assert ahead["remifentanil_ce@300.remifentanil_x1.2"] == pytest.approx(2.4, rel=0.05)
-    inputs["propofol_target"] = 0.0
-    assert np.isnan(e.lookahead(inputs, (300,))["bis@300.propofol_x1.2"])
+        runner.step(inputs)
+    up = runner.effect("propofol", 3.6, 3.0, (300,))
+    down = runner.effect("propofol", 2.4, 3.0, (300,))
+    assert up["bis@300"] < 0 < down["bis@300"]
+    assert up["map@300"] < 0 < down["map@300"]
+    assert up["propofol_ce@300"] == pytest.approx(0.6, rel=0.05)
+    assert runner.effect("remifentanil", 2.4, 2.0, (300,))["remifentanil_ce@300"] == pytest.approx(0.4, rel=0.05)
+    assert runner.effect("propofol", 3.6, 0.0, (300,)) is None  # no pump running
+    assert experts.Runner(PasExpert("p"), PATIENT, 1.0).effect("propofol", 3.6, 3.0, (300,)) is None

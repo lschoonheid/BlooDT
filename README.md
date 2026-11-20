@@ -120,8 +120,6 @@ Each step needs more data and time than the one before.
 uv run dte coverage                           # share of cases with each channel
 uv run dte explore map bis hr propofol_dose --by department optype   # largest consistent groups
 uv run dte cohort cohorts/tiva-artline.yaml   # resolve and freeze a cohort's case list
-uv run dte ablate configs/default.yaml cohorts/tiva-artline.yaml --run ablation   # what each input group adds
-uv run dte transfer configs/default.yaml cohorts/tiva-artline.yaml --run transfer # train on one patient group, test on another
 uv run dte replay 17 --run sixth --out decisions.parquet   # the twin's decisions over a case
 ```
 
@@ -133,13 +131,13 @@ config (`stages.py`; bump `VERSIONS` there when a stage's code changes its outpu
 | `vitaldb_cache`, `patients` | the dataset on disk; patient covariates and case phases from the clinical table |
 | `inventory`, `cohort` | which cases have which tracks and were given which drugs; cohort YAMLs and the explorer |
 | `channels` | tracks -> channels on a causal 1 s grid with staleness; pump volumes -> doses; training-time sensor faults |
-| `experts` | PAS and AnestheSIM stepped through each case: concentrations, model BIS/MAP/HR; pre-dose baselines; lookaheads and what-ifs; online calibration |
+| `experts` | PAS and AnestheSIM stepped through each case: concentrations, model BIS/MAP/HR; pre-dose baselines; online calibration; what-ifs on demand |
 | `labels`, `targets` | hypotension events, interventions (TCI target changes), forecast targets (add vitals in `TARGETS`) |
 | `features`, `dataset` | decision-point rows: windowed features, covariates, phase, labels |
 | `forecasting`, `suggestion` | one LightGBM per (target, horizon); per-drug intervention suggesters |
 | `splits`, `evaluation`, `pipeline` | patient split, baselines, calibration, metrics; `train` writes `models/<run>/` |
 | `verification` | expert fidelity: Ce against the pumps' own models, BIS/MAP against measured |
-| `effects`, `transfer`, `ablation` | validation: what-ifs against observed target changes; across patient groups; per input group |
+| `effects` | validation: what-ifs against what followed the clinicians' target changes |
 | `live` | the twin (raw records in, decisions out), the replayer, the twin service |
 
 ## Live stack
