@@ -8,7 +8,7 @@
    suggesters), a final forecaster on all of train, forecasts on test.
 5. Per drug: a suggester on train rows plus forecasts.
 6. Evaluate on clean test rows, and on perturbed ones when a perturbation is
-   configured; save models, metrics and config under models/<run>/.
+   configured; save models, metrics, config and the test cases under models/<run>/.
 """
 
 import json
@@ -89,6 +89,7 @@ def train(config: Config, cohort: Cohort, run: str, jobs: int = 16) -> Path:
         print(f"suggester {drug}: log loss {metrics['clean'][f'suggest.{drug}']['log_loss']:.3f}", flush=True)
 
     joblib.dump({"forecasters": forecasters, "suggesters": suggesters}, out / "models.joblib")
+    (out / "test_cases.json").write_text(json.dumps(sorted(map(int, test_sets["clean"].caseid.unique()))))
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2, default=_json))
     (out / "config.json").write_text(
         json.dumps({"config": asdict(config), "cohort": asdict(cohort)}, indent=2, default=_json)

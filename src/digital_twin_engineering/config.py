@@ -92,8 +92,12 @@ class Config:
     def expert_key(self, spec: dict[str, Any], perturbed: bool) -> dict[str, Any]:
         """The parts of the config one expert's signals depend on. Channels are
         perturbed independently, so the other channels loaded don't matter."""
+        from . import experts
+
         lookahead = self.lookahead()
+        version = getattr(experts.kinds()[spec["kind"]], "version", 0)
         return {
+            **({"code": version} if version else {}),
             "expert": spec,
             "step_s": self.step_s,
             "perturbation": asdict(self.perturbation) if perturbed and self.perturbation else None,

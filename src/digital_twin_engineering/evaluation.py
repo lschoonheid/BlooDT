@@ -5,7 +5,11 @@
   low" (score = -current MAP), as in Chaari et al.; also on onsets only (decision
   points where the event isn't already under way), where that baseline is weakest
 - suggestions: per-direction AUROC and log loss vs the class prior; MAE of the
-  suggested setting vs keeping the current one
+  suggested setting for the direction actually taken vs keeping the current one
+
+Probabilities are also checked for calibration (a stated 30% should come true 30%
+of the time): Brier score, expected calibration error over equal-count bins, and
+the reliability table behind it.
 """
 
 import numpy as np
@@ -21,6 +25,21 @@ def sensitivity_at_alert_rate(y: np.ndarray, score: np.ndarray, alert_rate: floa
     """Share of positives caught when alerting on the top `alert_rate` of scores."""
     threshold = np.quantile(score, 1 - alert_rate)
     return float((score[y == 1] >= threshold).mean()) if (y == 1).any() else np.nan
+
+
+def calibration(y: np.ndarray, p: np.ndarray, bins: int = 10) -> dict:
+    """Brier score, and expected calibration error over `bins` equal-count bins of
+    the predicted probability with each bin's mean prediction and observed rate."""
+    order = np.argsort(p, kind="stable")
+    groups = [g for g in np.array_split(order, bins) if len(g)]
+    predicted = np.array([p[g].mean() for g in groups])
+    observed = np.array([y[g].mean() for g in groups])
+    sizes = np.array([len(g) for g in groups])
+    return {
+        "brier": float(np.mean((p - y) ** 2)),
+        "ece": float(np.sum(sizes * np.abs(predicted - observed)) / sizes.sum()),
+        "reliability": {"predicted": predicted.round(4).tolist(), "observed": observed.round(4).tolist()},
+    }
 
 
 def _event_metrics(y, score, alert_rate):
@@ -47,6 +66,7 @@ def forecaster(f: Forecaster, rows: pd.DataFrame, alert_rate: float = 0.1) -> di
             "prevalence": float(y.mean()),
             "model": _event_metrics(y, pred, alert_rate),
             "baseline_map_already_low": baseline,
+            "calibration": calibration(y, pred),
         }
         if target.ongoing is not None:
             onset = has_current & ~target.ongoing(current)
@@ -85,11 +105,15 @@ def suggester(s: Suggester, rows: pd.DataFrame) -> dict:
             for j, d in enumerate(DIRECTIONS)
             if 0 < (y == d).sum() < len(y)
         },
+        "calibration": {
+            d: calibration((y == d).astype(float), proba[:, j]) for j, d in enumerate(DIRECTIONS)
+        },
     }
     changed = y != "hold"
-    if changed.any() and s.regressor is not None:
+    if changed.any() and s.regressors:
         target = rows.loc[changed, new].to_numpy()
         current = rows.loc[changed, f"x.{s.setting}"].fillna(0).to_numpy()
-        result["setting_mae"] = float(np.abs(out.loc[changed, "setting"] - target).mean())
+        taken = np.where(y[changed] == "increase", out.loc[changed, "setting_increase"], out.loc[changed, "setting_decrease"])
+        result["setting_mae"] = float(np.nanmean(np.abs(taken - target)))
         result["setting_mae_keep_current"] = float(np.nanmean(np.abs(current - target)))
     return result

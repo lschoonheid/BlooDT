@@ -7,15 +7,16 @@ experts:
   - {kind: pas, name: pas_marsh, model_propo: Marsh_modified, model_remi: Minto, model_bis: Bouillon, baseline: pre_dose}
   - {kind: pas, name: pas_schnider, model_propo: Schnider, model_remi: Minto, model_bis: Bouillon, baseline: pre_dose}
   - {kind: pas, name: pas_eleveld, model_propo: Eleveld, model_remi: Eleveld, model_bis: Eleveld, baseline: pre_dose}
-  - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified, baseline: pre_dose}
+  # whatif: also forecast each TCI target 20% lower and higher (the change's expected effect)
+  - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified, baseline: pre_dose, whatif: [0.8, 1.2]}
   - {kind: anesthesim, name: asim_separable, bis_model: greco, map_model: separable, baseline: pre_dose}
 # Experts that can forecast (AnestheSIM; PAS is too slow) predict this far ahead
 # at every decision point, holding the current infusion rates.
-expert_lookahead_s: [300]
+expert_lookahead_s: [120, 300]
 
 # Add or remove a vital here (and in targets.TARGETS if it's new), then retrain.
-targets: [map, bis, hypotension]
-horizons_s: [300]
+targets: [map, bis, hr, hypotension]
+horizons_s: [60, 180, 300, 600]
 
 step_s: 1
 # 10 s gives ~9 GB of rows for the 1,585-case TIVA cohort (x2 with perturbation),
@@ -38,7 +39,10 @@ perturbation:
 
 # LightGBM overrides, e.g. {n_estimators: 800}. {device_type: gpu} trains on the
 # GPU via OpenCL (works on the RX 7900; only ~15% faster than 16 CPU threads).
-model: {}
+# Regularised: on held-out training patients MAP@300 RMSE 12.56 vs 12.63 and
+# hypotension AUROC 0.944 vs 0.942 for the defaults (400 trees, lr 0.05, 63 leaves),
+# and faster (each tree sees 30% of the features).
+model: {n_estimators: 400, learning_rate: 0.03, min_child_samples: 200, colsample_bytree: 0.3, reg_lambda: 5.0}
 folds: 5
 test_fraction: 0.2
 seed: 0

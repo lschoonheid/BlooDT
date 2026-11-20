@@ -5,10 +5,11 @@ pipeline (`run`) and the live twin drive it the same way. Expert signals are
 inputs to the forecasters, not competing predictions; see
 docs/adr/0001-expert-models-feed-the-forecaster.md.
 
-An expert may also implement `lookahead(held, steps)`: its signals after holding one
-step's inputs for a number of steps, leaving its state untouched. `run` then adds
-`<expert>.<signal>@<horizon>` columns at every decision point, the expert's own
-forecast of what happens if the current infusion rates are kept.
+An expert may also implement `lookahead(held, horizons_s)` and
+`lookahead_columns(horizons_s)`: its signals after holding one step's inputs for
+each horizon (and possibly what-if scenarios), leaving its state untouched. `run`
+then adds those columns (`<expert>.<signal>@<horizon>...`) at every decision point:
+the expert's own forecast of what happens if the current infusion rates are kept.
 
 Experts are built from config specs like `{"kind": "pas", "name": "pas_eleveld",
 "model_propo": "Eleveld", ...}`; `kind` picks the class from `KINDS` and every other
@@ -52,7 +53,7 @@ class Lookahead:
     rate_window_s: float = 60
 
 
-def _kinds() -> dict[str, type]:
+def kinds() -> dict[str, type]:
     from .anesthesim import AnestheSimExpert
     from .pas import PasExpert
 
@@ -62,7 +63,7 @@ def _kinds() -> dict[str, type]:
 def build(spec: Mapping[str, Any]) -> Expert:
     params = dict(spec)
     kind = params.pop("kind")
-    return _kinds()[kind](**params)
+    return kinds()[kind](**params)
 
 
 class Runner:
@@ -84,9 +85,7 @@ class Runner:
         self.lookahead = lookahead if lookahead and hasattr(expert, "lookahead") else None
         self.ahead: dict[str, float] = {}
         if self.lookahead:
-            horizons = sorted(self.lookahead.horizons_s)
-            self.steps = [round(h / step_s) for h in horizons]
-            self.ahead_names = [f"{s}@{h}" for h in horizons for s in expert.lookahead_signals]
+            self.ahead_names = expert.lookahead_columns(self.lookahead.horizons_s)
             self.ahead = dict.fromkeys(self.ahead_names, np.nan)
             window = max(1, round(self.lookahead.rate_window_s / step_s))
             self.recent = {n: deque(maxlen=window) for n in self.doses}
@@ -107,14 +106,24 @@ class Runner:
         if self.lookahead:
             for n in self.doses:
                 self.recent[n].append(now[n])
+            self.held = now | {n: sum(r) / len(r) for n, r in self.recent.items()}
             if round(t) % self.lookahead.every_s == 0:
-                held = now | {n: sum(r) / len(r) for n, r in self.recent.items()}
-                ys = self.expert.lookahead(held, self.steps)
-                self.ahead = dict(
-                    zip(self.ahead_names, (y[s] for y in ys for s in self.expert.lookahead_signals))
-                )
-            out |= self.ahead
+                self.ahead = self.expert.lookahead(self.held, self.lookahead.horizons_s)
+            out |= {k: self.ahead[k] for k in self.ahead_names}
         return out
+
+
+    def effect(self, drug: str, target: float, current: float) -> dict[str, float] | None:
+        """What the expert expects a TCI target change from `current` to `target` to
+        do: each lookahead signal with the drug steered to `target` minus steered to
+        `current` (None if the expert can't simulate it). Both go through the TCI,
+        so the pump's pausing or boluses after a recent change don't count."""
+        if not self.lookahead or not hasattr(self.expert, "scenario") or not current > 0:
+            return None
+        horizons = self.lookahead.horizons_s
+        changed = self.expert.scenario(self.held, horizons, drug, target)
+        kept = self.expert.scenario(self.held, horizons, drug, current)
+        return {k: v - kept[k] for k, v in changed.items()}
 
 
 def run(

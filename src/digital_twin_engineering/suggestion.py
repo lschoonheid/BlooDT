@@ -1,7 +1,7 @@
 """Intervention suggestions: what a clinician would typically change now, per drug.
 
 Per drug, a classifier gives calibrated probabilities of decrease / hold / increase
-within the suggestion window, and a regressor gives the setting a change would go
+within the suggestion window, and a regressor per direction gives the setting a change would go
 to. Both see the forecasters' outputs (`f.` columns) next to the `x.` features, so a
 predicted hypotension can drive a suggested decrease. They imitate observed
 practice; a high probability means "typical here", not "correct".
@@ -30,17 +30,23 @@ class Suggester:
     setting: str  # the channel it suggests a value for, e.g. propofol_target
     features: list[str]
     classifier: Any
-    regressor: Any | None  # None when the training data had no changes
+    regressors: dict[str, Any]  # "decrease"/"increase" -> model (missing: no such changes)
 
     def suggest(self, rows: pd.DataFrame) -> pd.DataFrame:
-        """Columns p_decrease, p_hold, p_increase and `setting` (the setting a change
-        would go to) per row."""
+        """Columns p_decrease, p_hold, p_increase; setting_decrease and setting_increase
+        (where a change in that direction would go, at most / at least the current
+        setting); and `setting`, that of the more probable of the two."""
         X = rows[self.features].to_numpy(np.float32)
         proba = self.classifier.predict_proba(X)
         out = pd.DataFrame(0.0, index=rows.index, columns=[f"p_{d}" for d in DIRECTIONS])
         for j, cls in enumerate(self.classifier.classes_):
             out[f"p_{cls}"] = proba[:, j]
-        out["setting"] = self.regressor.predict(X) if self.regressor is not None else np.nan
+        current = rows[f"x.{self.setting}"].fillna(0).to_numpy()
+        for d, clip in (("decrease", np.minimum), ("increase", np.maximum)):
+            model = self.regressors.get(d)
+            out[f"setting_{d}"] = clip(model.predict(X), current) if model is not None else np.nan
+        up = out.p_increase >= out.p_decrease
+        out["setting"] = np.where(up, out.setting_increase, out.setting_decrease)
         return out
 
 
@@ -55,9 +61,10 @@ def fit(
     )
     X = rows[features].to_numpy(np.float32)
     classifier.fit(X, rows[direction].to_numpy())
-    changed = (rows[direction] != "hold").to_numpy()
-    regressor = None
-    if changed.any():
-        regressor = _model(False, params)
-        regressor.fit(X[changed], rows[new].to_numpy()[changed])
-    return Suggester(drug, setting, features, classifier, regressor)
+    regressors = {}
+    for d in ("decrease", "increase"):
+        changed = (rows[direction] == d).to_numpy()
+        if changed.any():
+            regressors[d] = _model(False, params)
+            regressors[d].fit(X[changed], rows[new].to_numpy()[changed])
+    return Suggester(drug, setting, features, classifier, regressors)

@@ -24,6 +24,7 @@ import pandas as pd
 from .. import experts
 from ..channels import CHANNELS, STALENESS, DoseCounter, resolve
 from ..config import Config
+from ..experts.anesthesim import TCI_DRUGS
 from ..features import covariate_features, phase_features, window_features
 from ..patients import Covariates
 
@@ -153,5 +154,20 @@ class Twin:
             suggestion = s.suggest(x).iloc[0]
             for k, v in suggestion.items():
                 out[f"suggest.{s.drug}.{k}"] = float(v)
+            if s.drug not in TCI_DRUGS:
+                continue
+            # what the first expert able to simulate it expects each suggested change to do
+            current = float(x[f"x.{s.setting}"].iloc[0])
+            for runner in self.runners:
+                effects = {
+                    d: runner.effect(s.drug, suggestion[f"setting_{d}"], current)
+                    for d in ("decrease", "increase")
+                    if np.isfinite(suggestion[f"setting_{d}"])
+                }
+                if any(e is not None for e in effects.values()):
+                    for d, effect in effects.items():
+                        for k, v in (effect or {}).items():
+                            out[f"suggest.{s.drug}.effect_{d}.{k}"] = v
+                    break
         self.last_features = x
         return out

@@ -7,6 +7,8 @@ other configs' results stay on disk.
 The cache can't see code changes: bump the stage's entry in VERSIONS whenever a
 change alters what it computes (e.g. how channels are gridded or features built).
 A stage built on another (experts on channels, rows on both) must be bumped with it.
+An expert class may carry a `version` of its own, so changing one kind of expert
+recomputes only experts of that kind.
 """
 
 import hashlib
@@ -24,8 +26,8 @@ DERIVED_DIR = Path(
 )
 VERSIONS = {
     "channels": 2,  # 2: dose totals count from when they become known
-    "experts": 2,
-    "rows": 6,  # 6: built from the channels and experts stages; expert lookahead changes
+    "experts": 2,  # an expert class's own `version` is in its key too
+    "rows": 7,  # 7: what-if effects relative to keeping the target
 }
 
 

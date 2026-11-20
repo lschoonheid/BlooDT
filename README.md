@@ -22,7 +22,7 @@ tail -f data/vitaldb-download.log
 
 ## Pipeline
 
-Terms are defined in [GLOSSARY.md](GLOSSARY.md); design decisions in [docs/adr/](docs/adr/).
+Terms are defined in [GLOSSARY.md](GLOSSARY.md); design decisions in [docs/adr/](docs/adr/); what the models achieve in [docs/results.md](docs/results.md).
 
 ```bash
 uv run dte inventory                          # once: tracks per case + drugs actually given (~12 min)

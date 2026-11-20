@@ -123,6 +123,16 @@ def covariate_map0(c: Covariates, bmi: float) -> float:
     return min(max(map0, 65.0), 115.0)
 
 
+# What-if targets: the setting channel, dose input, B-matrix input and Ce state per drug.
+# Orchestra pumps reach 1200 mL/h: 6.7 mg/s of propofol at 20 mg/mL, 6.7 ug/s of
+# remifentanil at 20 ug/mL.
+TCI_DRUGS = {
+    "propofol": dict(setting="propofol_target", dose="propofol_dose", input=0, ce=3, max_rate=1200 / 3600 * 20),
+    "remifentanil": dict(setting="remifentanil_target", dose="remifentanil_dose", input=1, ce=7, max_rate=1200 / 3600 * 20),
+}
+TCI_LEAD_S = 30  # how soon the TCI aims to reach its target: Ce gets there in ~90 s, overshooting ~1%
+
+
 def _hill(u: float, gamma: float) -> float:
     ug = max(u, 0.0) ** gamma
     return ug / (1 + ug)
@@ -138,9 +148,12 @@ class AnestheSimExpert:
 
     `lookahead` gives the signals after holding the current inputs for a while,
     without disturbing the stepped state: the model's own forecast of where the
-    patient is heading if nothing changes.
+    patient is heading if nothing changes. With `whatif` factors it also forecasts
+    each TCI target scaled by each factor, steering its own PK model to the new
+    target like a TCI pump (see `_tci_rate`): what a target change would do.
     """
 
+    version = 1  # 1: what-ifs include the current target (x1)
     inputs = (
         "propofol_dose",
         "remifentanil_dose",
@@ -172,6 +185,7 @@ class AnestheSimExpert:
         hr0: float | None = None,  # /min; default: 70.8
         stim_onset_s: float | None = None,  # s from case start; None: no stimulation
         baseline: str = "covariates",  # or "pre_dose": MAP0/HR0 observed before the first dose
+        whatif: tuple[float, ...] = (),  # TCI target factors to forecast, e.g. (0.8, 1.2)
     ):
         if bis_model not in BIS_PARAMS:
             raise ValueError(f"unknown bis_model {bis_model!r}")
@@ -187,8 +201,13 @@ class AnestheSimExpert:
         if baseline not in ("covariates", "pre_dose"):
             raise ValueError(f"unknown baseline {baseline!r}")
         self.baseline = baseline
+        self.inputs = type(self).inputs
         if baseline == "pre_dose":
-            self.inputs = type(self).inputs + baselines.INPUTS
+            self.inputs += baselines.INPUTS
+        # the current target (x1) too: what-if effects are measured against keeping it
+        self.whatif = tuple(sorted(set(whatif) | {1.0})) if whatif else ()
+        if self.whatif:
+            self.inputs += tuple(TCI_DRUGS[d]["setting"] for d in TCI_DRUGS)
 
     def reset(self, covariates: Covariates, step_s: float) -> None:
         c = covariates
@@ -228,6 +247,15 @@ class AnestheSimExpert:
         self.map_turnover, self.hr = self.map0, self.hr0
         self.t = 0.0
         self.pre_dose = baselines.PreDoseBaseline() if self.baseline == "pre_dose" else None
+        # TCI: Ce after TCI_LEAD_S of a constant rate is free + gain * rate
+        ad_lead, reach = np.eye(13), np.zeros((13, 5))
+        for _ in range(max(1, round(TCI_LEAD_S / step_s))):
+            reach = self.ad @ reach + self.bd
+            ad_lead = self.ad @ ad_lead
+        self.tci = {
+            d: (ad_lead[spec["ce"]], reach[spec["ce"], spec["input"]] * step_s)
+            for d, spec in TCI_DRUGS.items()
+        }
 
     def _set_baseline(self, map0: float | None, hr0: float | None) -> None:
         """Re-baseline before any drug is given (the model is still at rest)."""
@@ -279,18 +307,60 @@ class AnestheSimExpert:
 
     lookahead_signals = ("propofol_ce", "remifentanil_ce", "bis", "map", "hr")
 
-    def lookahead(self, held: Mapping[str, float], steps: list[int]) -> list[Mapping[str, float]]:
-        """Signals after holding `held` (one step's inputs) for each of `steps` steps,
-        starting from the current state; the state is left as it was."""
+    def lookahead_columns(self, horizons_s: tuple[int, ...]) -> list[str]:
+        """`<signal>@<h>` holding everything, `<signal>@<h>.<drug>_x<factor>` per what-if."""
+        names = []
+        for suffix in [""] + [f".{d}_x{f:g}" for d in TCI_DRUGS for f in self.whatif]:
+            names += [f"{s}@{h}{suffix}" for h in sorted(horizons_s) for s in self.lookahead_signals]
+        return names
+
+    def lookahead(self, held: Mapping[str, float], horizons_s: tuple[int, ...]) -> dict[str, float]:
+        """Signals after holding `held` (one step's inputs) for each horizon, and per
+        what-if with that drug steered to its scaled target instead; starting from
+        the current state, which is left as it was. What-ifs for a drug whose pump
+        isn't running are NaN."""
+        out = self.scenario(held, horizons_s)
+        for drug, spec in TCI_DRUGS.items():
+            for f in self.whatif:
+                target = held[spec["setting"]]
+                suffix = f".{drug}_x{f:g}"
+                if target == target and target > 0:
+                    ahead = self.scenario(held, horizons_s, drug, target * f)
+                    out |= {k + suffix: v for k, v in ahead.items()}
+                else:
+                    out |= {f"{s}@{h}{suffix}": np.nan for h in horizons_s for s in self.lookahead_signals}
+        return out
+
+    def scenario(
+        self,
+        held: Mapping[str, float],
+        horizons_s: tuple[int, ...],
+        drug: str | None = None,
+        target: float | None = None,
+    ) -> dict[str, float]:
+        """`<signal>@<h>` after holding `held` for each horizon, with `drug` (if
+        given) steered to TCI `target` instead; the state is left as it was."""
         state = (self.x.copy(), self.u.copy(), deque(self.ne_queue), self.map_turnover, self.hr, self.t)
-        out, done = [], 0
-        for n in sorted(steps):
-            for _ in range(n - done):
-                y = self._advance(held)
-            done = n
-            out.append(y)
+        inputs = dict(held)
+        out, done = {}, 0
+        for h in sorted(horizons_s):
+            for _ in range(round(h / self.step_s) - done):
+                if drug is not None:
+                    inputs[TCI_DRUGS[drug]["dose"]] = self._tci_rate(drug, target) * self.step_s
+                y = self._advance(inputs)
+            done = round(h / self.step_s)
+            out |= {f"{s}@{h}": y[s] for s in self.lookahead_signals}
         self.x, self.u, self.ne_queue, self.map_turnover, self.hr, self.t = state
         return out
+
+    def _tci_rate(self, drug: str, target: float) -> float:
+        """The infusion rate a TCI pump would run now: the constant rate that brings
+        the model's effect-site concentration to `target` in TCI_LEAD_S, within the
+        pump's range (so it boluses at its maximum when far below, and pauses when
+        above)."""
+        free, gain = self.tci[drug]
+        rate = (target - free @ self.x) / gain
+        return min(max(rate, 0.0), TCI_DRUGS[drug]["max_rate"])
 
     def _advance(self, inputs: Mapping[str, float]) -> Mapping[str, float]:
         dt = self.step_s
