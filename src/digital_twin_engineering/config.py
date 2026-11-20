@@ -67,11 +67,13 @@ class Config:
 
     @property
     def all_channels(self) -> tuple[str, ...]:
-        """Configured channels plus every expert input and suggestion setting."""
+        """Configured channels plus every expert input and suggestion setting (an
+        input `<channel>__staleness` comes with its channel)."""
         from . import experts
+        from .channels import STALENESS
 
         needed = list(self.channels)
-        needed += [n for spec in self.experts for n in experts.build(spec).inputs]
+        needed += [n.removesuffix(STALENESS) for spec in self.experts for n in experts.build(spec).inputs]
         needed += list(self.suggestion.drugs.values())
         return tuple(dict.fromkeys(needed))
 

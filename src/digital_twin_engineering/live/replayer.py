@@ -1,15 +1,15 @@
 """Replays a VitalDB case's raw records into a twin as if live.
 
 `replay` drives a Twin in-process, as fast as it can: each second of case time it
-delivers every record up to that second, then ticks. The live layer's replayer
-does the same over MQTT (outline): each record published at its own time scaled
-by a speed factor, on topic `twin/<caseid>/track/<device>/<track>` with payload
-{"t": epoch_s, "v": value}. Raw records rather than grid values keep the twin's
-view identical to the offline one: it builds its own causal grid and staleness.
+delivers every record up to that second, then ticks. `replay_mqtt` publishes the
+same stream to an MQTT broker (see messages.py) for the twin service, each second
+of case time at its own time divided by a speed factor.
 """
 
 import heapq
 import json
+import math
+import time
 from pathlib import Path
 
 import joblib
@@ -21,6 +21,7 @@ from ..channels import CHANNELS
 from ..config import Config
 from ..patients import clinical, covariates
 from ..pipeline import MODELS_DIR
+from . import messages
 from .twin import Phases, Twin
 
 
@@ -47,10 +48,13 @@ def records(caseid: int, channels: list[str]) -> tuple[list[str], list[tuple[flo
     return available, list(heapq.merge(*streams, key=lambda r: r[0])), vf.dtend - vf.dtstart
 
 
-def make_twin(caseid: int, config: Config, models: dict, tracks: list[str]) -> Twin:
+def phases(caseid: int) -> dict[str, float]:
     row = clinical().loc[caseid]
-    phases = Phases(row.anestart, row.opstart, row.opend)
-    return Twin(config, models, covariates(caseid), tracks, phases)
+    return {name: float(row[name]) for name in messages.PHASES}
+
+
+def make_twin(caseid: int, config: Config, models: dict, tracks: list[str]) -> Twin:
+    return Twin(config, models, covariates(caseid), tracks, Phases(**phases(caseid)))
 
 
 def replay(caseid: int, config: Config, models: dict, until: float | None = None) -> pd.DataFrame:
@@ -68,5 +72,45 @@ def replay(caseid: int, config: Config, models: dict, until: float | None = None
     return pd.DataFrame(decisions).set_index("t")
 
 
-def replay_mqtt(caseid: int, broker: str, speed: float = 1.0) -> None:
-    raise NotImplementedError("the MQTT replayer is part of the live layer outline")
+def stream(
+    caseid: int, config: Config, start: float, until: float | None = None
+) -> list[tuple[float, str, dict]]:
+    """The case's messages for the twin service (see messages.stream), up to case
+    time `until` if given."""
+    tracks, recs, duration = records(caseid, list(config.all_channels))
+    duration = duration if until is None else min(duration, until)
+    return list(
+        messages.stream(caseid, tracks, recs, duration, covariates(caseid), phases(caseid), start, config.step_s)
+    )
+
+
+def replay_mqtt(
+    caseid: int,
+    config: Config,
+    host: str,
+    port: int = 1883,
+    speed: float = 30.0,
+    start: float | None = None,
+    until: float | None = None,
+) -> float:
+    """Publish a case to an MQTT broker, `speed` times faster than real time (inf:
+    as fast as possible). `start` is the epoch time of case time 0 (default now,
+    whole seconds). Returns `start`."""
+    import paho.mqtt.client as mqtt
+
+    start = math.floor(time.time()) if start is None else start
+    msgs = stream(caseid, config, start, until)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"replayer-{caseid}")
+    client.connect(host, port)
+    client.loop_start()
+    began = time.monotonic()
+    for t, topic, payload in msgs:
+        wait = began + t / speed - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        client.publish(topic, messages.encode(payload), qos=1, retain=topic.endswith("/meta"))
+    # clear the retained meta; QoS 1 messages go out in order, so this one last
+    client.publish(messages.topic(caseid, "meta"), b"", qos=1, retain=True).wait_for_publish()
+    client.loop_stop()
+    client.disconnect()
+    return start

@@ -166,3 +166,42 @@ def test_speed():
     per_step_ms = (time.perf_counter() - start) / n * 1e3
     print(f"\nAnestheSIM expert: {per_step_ms * 1e3:.1f} us per step")
     assert per_step_ms < 5
+
+
+def test_bis_calibration_finds_a_more_sensitive_patient():
+    dose = NO_DRUG | dict(propofol_dose=0.15, remifentanil_dose=0.002)
+    patient = AnestheSimExpert("p")  # the "real" patient: 1.5x as sensitive as the model
+    patient.reset(PATIENT, 1.0)
+    patient.bis_scale = 1.5
+    calibrated = AnestheSimExpert("c", calibrate_bis=True)
+    calibrated.reset(PATIENT, 1.0)
+    plain = AnestheSimExpert("n")
+    plain.reset(PATIENT, 1.0)
+    for i in range(3600):
+        measured = patient.step(dose)["bis"]
+        y = calibrated.step(dose | {"bis": measured, "bis__staleness": 0.0})
+        y_plain = plain.step(dose)
+    assert y["bis_sensitivity"] == pytest.approx(1.5, rel=0.05)
+    assert abs(y["bis"] - measured) < 0.2 * abs(y_plain["bis"] - measured)
+
+
+def test_bis_calibration_ignores_stale_and_implausible_readings():
+    dose = NO_DRUG | dict(propofol_dose=0.15)
+    e = AnestheSimExpert("c", calibrate_bis=True)
+    e.reset(PATIENT, 1.0)
+    for _ in range(600):
+        e.step(dose | {"bis": 20.0, "bis__staleness": 5.0})
+        y = e.step(dose | {"bis": 0.0, "bis__staleness": 0.0})
+    assert y["bis_sensitivity"] == 1.0
+
+
+def test_map_calibration_scales_the_propofol_effect():
+    dose = NO_DRUG | dict(propofol_dose=0.15)
+    e = AnestheSimExpert("c", map_model="unified", calibrate_map=True)
+    e.reset(PATIENT, 1.0)
+    map0 = covariate_map0(PATIENT, PATIENT.weight / 1.75**2)
+    for _ in range(3600):
+        y = e.step(dose | {"map": map0 - 5.0, "map__staleness": 0.0})  # a far smaller drop than modelled
+    assert y["map_sensitivity"] < 0.5
+    with pytest.raises(ValueError):
+        AnestheSimExpert("s", map_model="separable", calibrate_map=True)

@@ -62,3 +62,11 @@ def test_event_target_is_any_event_within_the_horizon():
     assert y.iloc[100] == 0  # event starts 100 s later, beyond the horizon
     assert y.iloc[150] == 1  # within 60 s
     assert y.iloc[199] == 1
+
+
+def test_smoothed_target_is_the_median_around_the_horizon():
+    values = np.full(300, 80.0)
+    values[150] = 20.0  # a flush artefact
+    y = TARGETS["map_1min"].label(frame(values), horizon_s=150)
+    assert y.iloc[0] == 80.0
+    assert TARGETS["map"].label(frame(values), horizon_s=150).iloc[0] == 20.0

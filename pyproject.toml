@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "lightgbm>=4.7.0",
+    "paho-mqtt>=2.2.0",
     "pyarrow>=26.0.1",
     "python-anesthesia-simulator",
     "pyyaml>=6.0.3",
@@ -26,6 +27,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "amqtt>=0.12.2",
     "pytest>=9.2.0",
 ]
 

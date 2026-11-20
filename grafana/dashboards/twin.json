@@ -1,0 +1,729 @@
+{
+  "uid": "twin",
+  "title": "Anaesthesia twin",
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now+3h"
+  },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "case",
+        "label": "Case",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-twin"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"twin\", tag: \"case\")",
+        "refresh": 2
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Unexplained deviation",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-twin"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"flagged\" and r._value == true)\n  |> map(fn: (r) => ({_time: r._time, _value: \"deviation: \" + r.signal}))"
+      },
+      {
+        "name": "Hypotension alert",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-twin"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"alert\" and r._value == true)\n  |> map(fn: (r) => ({_time: r._time, _value: \"hypotension alert\"}))"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Mean arterial pressure",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"MAP measured\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"map_1min\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"1-min MAP forecast 5 min ago\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"nibp_map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"NIBP MAP\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "unit": "mmHg",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 65
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "1-min MAP forecast 5 min ago"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    6
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Hypotension risk (MAP < 65 for 1 min within the horizon)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"within 5 min\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@60\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"within 1 min\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@600\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"within 10 min\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never"
+          },
+          "unit": "percentunit",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "BIS",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"bis\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"BIS measured\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"bis\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"BIS forecast 5 min ago\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"AnestheSIM (Greco)\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "D",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"pas_eleveld\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"PAS (Eleveld)\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 40
+              },
+              {
+                "color": "orange",
+                "value": 60
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "BIS forecast 5 min ago"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    6
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heart rate",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"hr\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"HR measured\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"hr\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"HR forecast 5 min ago\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never"
+          },
+          "unit": "bpm"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "HR forecast 5 min ago"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    6
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Propofol (\u00b5g/mL)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"propofol_target\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"TCI target\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"propofol_ce_pump\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, pump\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"propofol_ce\" and r.expert == \"pas_marsh\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, PAS Marsh\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "D",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"propofol_ce\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, AnestheSIM\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Remifentanil (ng/mL)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"remifentanil_target\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"TCI target\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"remifentanil_ce_pump\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, pump\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"remifentanil_ce\" and r.expert == \"pas_marsh\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, PAS Minto\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Probability the anaesthetist changes a target within 1 min",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_decrease\" and r.drug == \"propofol\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"propofol lower\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_increase\" and r.drug == \"propofol\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"propofol raise\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_decrease\" and r.drug == \"remifentanil\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"remifentanil lower\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "D",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_increase\" and r.drug == \"remifentanil\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"remifentanil raise\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never"
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Suggested targets and their expected effect in 5 min (AnestheSIM)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and (r._field == \"setting_decrease\" or r._field == \"setting_increase\" or r._field =~ /^effect_.*\\.(bis|map)@300$/))\n  |> last() |> group() |> pivot(rowKey: [\"drug\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> drop(columns: [\"_start\", \"_stop\", \"_time\", \"_measurement\", \"case\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Deviation: measured minus the forecast made 1 min earlier (flags: orange marks)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"bis\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"BIS\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"hr\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"HR\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"MAP\")",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Forecast fidelity so far: RMSE, twin vs persistence",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast_fidelity\" and r.case == \"${case}\")\n  |> last() |> group() |> pivot(rowKey: [\"signal\", \"horizon\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> drop(columns: [\"_start\", \"_stop\", \"_time\", \"_measurement\", \"case\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "type": "table",
+      "title": "Expert fidelity over the case (Ce vs pump; BIS, MAP vs measured)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-twin"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fidelity\" and r.case == \"${case}\" and r.window == \"case\")\n  |> last() |> group() |> pivot(rowKey: [\"expert\", \"signal\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> drop(columns: [\"_start\", \"_stop\", \"_time\", \"_measurement\", \"case\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    }
+  ]
+}

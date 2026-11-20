@@ -17,6 +17,10 @@ interaction surface and a MAP/HR model. Deviations from the Simulink model:
 - AnestheSIM starts the noxious-stimulation term of the turnover model at t = 0.
   The incision time is not known causally, so stimulation is off unless
   `stim_onset_s` is given.
+- `calibrate_bis` fits the patient's hypnotic sensitivity online (calibration.py):
+  the BIS surface sees the hypnotic concentrations times a factor that the
+  measured BIS keeps adjusting; `calibrate_map` likewise scales the unified MAP
+  model's propofol effect. Not in AnestheSIM.
 """
 
 import math
@@ -28,17 +32,33 @@ from scipy.linalg import block_diag, expm
 
 from ..patients import Covariates
 from . import baseline as baselines
+from .calibration import LogScaleFilter
 
 NE_MOLAR_MASS = 169.18  # g/mol, buildPatientModels.m
 MAC40 = {"sevoflurane": 1.8, "desflurane": 6.6}  # vol%, Mapleson 1996 (VolatileModel.m)
 MAPLESON_AGE_DECAY = -0.00269  # 1/year, VolatileModel.m
 
 # BIS surfaces, bisParameters.m: (C50, gamma) per drug and the interaction E0, Emax, gamma.
+# calibrate_bis defaults: the factor starts at 1 within about x/÷ 1.65, may drift
+# ~20%/h; BIS noise is set to 25 (the monitor's ~8 over ~10 correlated samples)
+BIS_CALIBRATION = dict(prior_sd=0.5, drift_sd_per_hour=0.2, noise_sd=25.0)
+BIS_FRESH_RANGE = (10.0, 98.0)  # readings outside are artefacts or awake noise
+# calibrate_map (unified MAP model only): the propofol Emax factor; MAP noise 30 mmHg
+# for the same reason (the arterial line's beat-to-beat and artefact swings)
+MAP_CALIBRATION = dict(prior_sd=0.7, drift_sd_per_hour=0.2, noise_sd=30.0)
+MAP_FRESH_RANGE = (30.0, 160.0)
+
 BIS_PARAMS = {
     "greco": dict(prop=(3.34, 1.2), remi=(2.41, 1.2), e0=95.0, emax=70.0, gamma=1.2),
     "bouillon": dict(prop=(4.47, 1.43), remi=(19.3, 1.43), e0=97.4, emax=97.4, gamma=1.43),
     "minto": dict(prop=(3.35, 1.58), remi=(7.96, 7.85), e0=93.0, emax=83.0, gamma=1.0),
 }
+
+
+def _calibration(defaults: dict, option: bool | dict) -> dict | None:
+    if not option:
+        return None
+    return defaults | (option if isinstance(option, dict) else {})
 
 
 def _lbm(c: Covariates) -> float:
@@ -186,6 +206,8 @@ class AnestheSimExpert:
         stim_onset_s: float | None = None,  # s from case start; None: no stimulation
         baseline: str = "covariates",  # or "pre_dose": MAP0/HR0 observed before the first dose
         whatif: tuple[float, ...] = (),  # TCI target factors to forecast, e.g. (0.8, 1.2)
+        calibrate_bis: bool | dict = False,  # True, or BIS_CALIBRATION overrides
+        calibrate_map: bool | dict = False,  # True, or MAP_CALIBRATION overrides
     ):
         if bis_model not in BIS_PARAMS:
             raise ValueError(f"unknown bis_model {bis_model!r}")
@@ -208,6 +230,17 @@ class AnestheSimExpert:
         self.whatif = tuple(sorted(set(whatif) | {1.0})) if whatif else ()
         if self.whatif:
             self.inputs += tuple(TCI_DRUGS[d]["setting"] for d in TCI_DRUGS)
+        self.calibrate_bis = _calibration(BIS_CALIBRATION, calibrate_bis)
+        self.calibrate_map = _calibration(MAP_CALIBRATION, calibrate_map)
+        if self.calibrate_map and map_model != "unified":
+            raise ValueError("calibrate_map needs map_model unified")
+        self.signals = type(self).signals
+        if self.calibrate_bis:
+            self.inputs += ("bis", "bis__staleness")
+            self.signals += ("bis_sensitivity",)
+        if self.calibrate_map:
+            self.inputs += ("map", "map__staleness")
+            self.signals += ("map_sensitivity",)
 
     def reset(self, covariates: Covariates, step_s: float) -> None:
         c = covariates
@@ -247,6 +280,10 @@ class AnestheSimExpert:
         self.map_turnover, self.hr = self.map0, self.hr0
         self.t = 0.0
         self.pre_dose = baselines.PreDoseBaseline() if self.baseline == "pre_dose" else None
+        self.bis_filter = LogScaleFilter(**self.calibrate_bis, step_s=step_s) if self.calibrate_bis else None
+        self.bis_scale = 1.0
+        self.map_filter = LogScaleFilter(**self.calibrate_map, step_s=step_s) if self.calibrate_map else None
+        self.map_scale = 1.0
         # TCI: Ce after TCI_LEAD_S of a constant rate is free + gain * rate
         ad_lead, reach = np.eye(13), np.zeros((13, 5))
         for _ in range(max(1, round(TCI_LEAD_S / step_s))):
@@ -265,11 +302,13 @@ class AnestheSimExpert:
             self.hr0 = min(max(hr0, 35.0), 140.0)
         self.map_turnover, self.hr = self.map0, self.hr0
 
-    def _bis(self, ce_p: float, ce_r: float, ce_sevo: float, ce_des: float) -> float:
-        # bisMinto.m, bisBouillon.m, bisGrecoVolatile.m
+    def _bis(self, ce_p: float, ce_r: float, ce_sevo: float, ce_des: float, scale: float | None = None) -> float:
+        # bisMinto.m, bisBouillon.m, bisGrecoVolatile.m; `scale`: hypnotic sensitivity
         p = self.bis_params
         (c50_p, g_p), (c50_r, g_r) = p["prop"], p["remi"]
-        ce_p, ce_r = max(ce_p, 0.0), max(ce_r, 0.0)
+        scale = self.bis_scale if scale is None else scale
+        ce_p, ce_r = max(ce_p, 0.0) * scale, max(ce_r, 0.0)
+        ce_sevo, ce_des = ce_sevo * scale, ce_des * scale
         if self.bis_model == "minto":
             s = (ce_p / c50_p) ** g_p + (ce_r / c50_r) ** g_r
             effect = s / (1 + s)
@@ -303,7 +342,35 @@ class AnestheSimExpert:
     def step(self, inputs: Mapping[str, float]) -> Mapping[str, float]:
         if self.pre_dose is not None and self.pre_dose.update(inputs):
             self._set_baseline(self.pre_dose.map0, self.pre_dose.hr0)
-        return self._advance(inputs)
+        y = self._advance(inputs)
+        if self.bis_filter is not None:
+            # y["bis"] was predicted with the factor so far; the reading then updates it
+            bis = inputs["bis"]
+            lo, hi = BIS_FRESH_RANGE
+            fresh = inputs["bis__staleness"] < self.step_s and lo <= bis <= hi
+            x = self.x
+            ce = (float(x[3]), float(x[7]), float(x[11]), float(x[12]))
+            self.bis_filter.step(bis if fresh else None, lambda theta: self._bis(*ce, scale=math.exp(theta)))
+            self.bis_scale = self.bis_filter.scale
+            y = dict(y) | {"bis_sensitivity": self.bis_scale}
+        if self.map_filter is not None:
+            map_ = inputs["map"]
+            lo, hi = MAP_FRESH_RANGE
+            fresh = inputs["map__staleness"] < self.step_s and lo <= map_ <= hi
+            ce_p, ce_r, cc_ne = float(self.x[3]), float(self.x[7]), float(self.x[9]) / self.ne["v1"]
+            self.map_filter.step(map_ if fresh else None, lambda theta: self._map_unified(ce_p, ce_r, cc_ne, math.exp(theta)))
+            self.map_scale = self.map_filter.scale
+            y = dict(y) | {"map_sensitivity": self.map_scale}
+        return y
+
+    def _map_unified(self, ce_p: float, ce_r: float, cc_ne: float, scale: float | None = None) -> float:
+        # mapUnified.m / mapUnifiedParameters.m: the propofol/remifentanil values
+        # are AnestheSIM's illustrative ones (no published set); NE on exogenous Cc.
+        # `scale`: the patient's propofol Emax factor
+        scale = self.map_scale if scale is None else scale
+        ce_p, ce_r = max(ce_p, 0.0), max(ce_r, 0.0)
+        c50 = max(2.0 * (1 - 0.5 * ce_r / (ce_r + 2.0)), 1e-6)  # C50P, kR, C50R
+        return self.map0 - 30.0 * scale * ce_p / (ce_p + c50) + self._ne_emax(max(cc_ne, 0.0))  # EmaxP
 
     lookahead_signals = ("propofol_ce", "remifentanil_ce", "bis", "map", "hr")
 
@@ -390,11 +457,7 @@ class AnestheSimExpert:
             cendo = self.ne["cendo"]
             map_ = self.map_turnover + self._ne_emax(max(cc_ne, 0.0) + cendo) - self._ne_emax(cendo)
         else:
-            # mapUnified.m / mapUnifiedParameters.m: the propofol/remifentanil values
-            # are AnestheSIM's illustrative ones (no published set); NE on exogenous Cc.
-            ce_pp, ce_rr = max(ce_p, 0.0), max(ce_r, 0.0)
-            c50 = max(2.0 * (1 - 0.5 * ce_rr / (ce_rr + 2.0)), 1e-6)  # C50P, kR, C50R
-            map_ = self.map0 - 30.0 * ce_pp / (ce_pp + c50) + self._ne_emax(max(cc_ne, 0.0))  # EmaxP
+            map_ = self._map_unified(ce_p, ce_r, cc_ne)
 
         return {
             "propofol_cp": cp_p,

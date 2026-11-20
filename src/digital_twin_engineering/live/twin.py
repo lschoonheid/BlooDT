@@ -10,8 +10,8 @@ Every grid step the twin
 
 So at a decision point it sees exactly the features the offline rows hold for that
 point, except shortly after a pump volume jump, which the twin can only judge a few
-readings later (see channels.DoseCounter). In the live layer its outputs go to
-InfluxDB; here `tick` returns them.
+readings later (see channels.DoseCounter). `tick` returns the decision; the twin
+service (service.py) writes it to InfluxDB.
 """
 
 from collections import deque
@@ -31,7 +31,8 @@ from ..patients import Covariates
 
 @dataclass(frozen=True)
 class Phases:
-    """Case times (s from case start), announced live by VitalDB's EVENT track."""
+    """Case times (s from case start), announced live by VitalDB's EVENT track; one
+    not announced yet is NaN (anestart) or inf (opstart, opend)."""
 
     anestart: float
     opstart: float

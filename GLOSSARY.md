@@ -54,6 +54,10 @@ _Avoid_: Counterfactual (in prose), simulation
 A patient's resting mean arterial pressure and heart rate, taken from what was observed before the first drug dose of a case.
 _Avoid_: Pre-induction baseline (that would need the whole pre-induction period), MAP0 (in prose)
 
+**Online calibration**:
+Adjusting one of an expert model's parameters to the patient while the case runs, from what is measured, such as the patient's sensitivity to the hypnotic from their BIS.
+_Avoid_: Personalisation, fitting (in prose)
+
 **Forecaster**:
 A learned model that predicts a target at a horizon from tracks, expert signals and patient covariates.
 _Avoid_: Predictor, ML model
@@ -75,6 +79,20 @@ _Avoid_: Low BP, IOH (in code)
 
 **Onset**:
 A decision point at which an event is not already under way, judging by the current value alone; forecasting an event matters most at onsets.
+
+**Hypotension alert**:
+A warning the twin raises when its probability of a hypotension event within 5 minutes passes a threshold, chosen so that a fixed share of decision points alert.
+_Avoid_: Alarm (monitors raise alarms on current values)
+
+**Unexplained deviation**:
+A vital that departs from what the twin forecast a minute earlier by much more than its usual error, with no target change shortly before; the response to the first incision is the typical one.
+_Avoid_: Anomaly, outlier
+
+**Replay**:
+Feeding a recorded case to the twin record by record, in real time or faster, as if it were happening live.
+
+**Fidelity**:
+How closely the twin tracks the real patient: its concentrations against the pumps' own models, and its forecasts and expert signals against what was measured.
 
 ## Interventions
 

@@ -47,6 +47,7 @@ def _event_metrics(y, score, alert_rate):
         "auroc": roc_auc_score(y, score),
         "auprc": average_precision_score(y, score),
         f"sensitivity@{alert_rate:.0%}_alerts": sensitivity_at_alert_rate(y, score, alert_rate),
+        f"threshold@{alert_rate:.0%}_alerts": float(np.quantile(score, 1 - alert_rate)),
     }
 
 
@@ -86,7 +87,10 @@ def forecaster(f: Forecaster, rows: pd.DataFrame, alert_rate: float = 0.1) -> di
         e = p[ok] - y[ok]
         return {"mae": float(np.abs(e).mean()), "rmse": float(np.sqrt((e**2).mean()))}
 
-    return {"n": len(y), "model": errors(pred), "baseline_persistence": errors(current)}
+    return {
+        "n": len(y), "model": errors(pred),
+        "baseline_persistence": errors(rows[target.persistence_column].to_numpy()),
+    }
 
 
 def suggester(s: Suggester, rows: pd.DataFrame) -> dict:

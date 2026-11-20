@@ -8,14 +8,18 @@ experts:
   - {kind: pas, name: pas_schnider, model_propo: Schnider, model_remi: Minto, model_bis: Bouillon, baseline: pre_dose}
   - {kind: pas, name: pas_eleveld, model_propo: Eleveld, model_remi: Eleveld, model_bis: Eleveld, baseline: pre_dose}
   # whatif: also forecast each TCI target 20% lower and higher (the change's expected effect)
-  - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified, baseline: pre_dose, whatif: [0.8, 1.2]}
+  # calibrate_bis: fit the patient's hypnotic sensitivity to the measured BIS as the case
+  # runs (BIS MDAPE 17% -> 9% on test patients; calibrate_map is not used: it tracks MAP
+  # but its what-ifs agree no better with what follows a target change)
+  - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified, baseline: pre_dose, whatif: [0.8, 1.2], calibrate_bis: true}
   - {kind: anesthesim, name: asim_separable, bis_model: greco, map_model: separable, baseline: pre_dose}
 # Experts that can forecast (AnestheSIM; PAS is too slow) predict this far ahead
 # at every decision point, holding the current infusion rates.
 expert_lookahead_s: [120, 300]
 
 # Add or remove a vital here (and in targets.TARGETS if it's new), then retrain.
-targets: [map, bis, hr, hypotension]
+# map_1min: the median MAP over the minute around the horizon (see targets.TARGETS)
+targets: [map, map_1min, bis, hr, hypotension]
 horizons_s: [60, 180, 300, 600]
 
 step_s: 1

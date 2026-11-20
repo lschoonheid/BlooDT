@@ -23,7 +23,7 @@ def test_twin_grid_matches_offline_frame(tmp_path, monkeypatch):
     config = Config.from_dict(
         {
             "channels": ["map", "hr", "bis"],
-            "experts": [{"kind": "anesthesim", "name": "asim", "baseline": "pre_dose"}],
+            "experts": [{"kind": "anesthesim", "name": "asim", "baseline": "pre_dose", "calibrate_bis": True}],
             "expert_lookahead_s": [300],
             "decision_every_s": 30,
             "features": {"windows_s": [60, 300]},

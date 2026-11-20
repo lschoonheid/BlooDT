@@ -1,5 +1,15 @@
-# Live stack (outline): the replayer and twin services are added once
-# src/digital_twin_engineering/live/ is implemented.
+# The live stack: replayer -> Mosquitto -> twin service -> InfluxDB -> Grafana.
+#
+#   RUN=<run> docker compose up -d            # broker, database, dashboard, twin service
+#   docker compose run --rm replayer 17       # replay case 17 at 30x (--speed, --until)
+#
+# Grafana: http://localhost:3000 (admin / admin), dashboard "Anaesthesia twin".
+# The twin service reads models/<RUN>; the replayer reads data/vitaldb.
+x-app: &app
+  build: .
+  image: digital-twin-engineering
+  depends_on: [mosquitto]
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -15,16 +25,37 @@ services:
       DOCKER_INFLUXDB_INIT_PASSWORD: twin-password
       DOCKER_INFLUXDB_INIT_ORG: twin
       DOCKER_INFLUXDB_INIT_BUCKET: twin
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: twin-token
     volumes: [influxdb:/var/lib/influxdb2]
 
   grafana:
     image: grafana/grafana:11.2.0
     ports: ["3000:3000"]
     depends_on: [influxdb]
-    volumes: [grafana:/var/lib/grafana]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/twin.json
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
-  # replayer:   uv run python -m digital_twin_engineering.live.replayer <caseid>
-  # twin:       uv run python -m digital_twin_engineering.live.twin models/<run>
+  twin:
+    <<: *app
+    depends_on: [mosquitto, influxdb]
+    restart: unless-stopped
+    command: [serve, --run, "${RUN:-sixth}", --host, mosquitto, --influx, "http://influxdb:8086"]
+    environment:
+      INFLUX_TOKEN: twin-token
+      ALERT_THRESHOLD: ${ALERT_THRESHOLD:-}
+    volumes: ["./models:/app/models:ro"]
+
+  replayer:
+    <<: *app
+    profiles: [replay]
+    entrypoint: [uv, run, --no-sync, dte, publish, --run, "${RUN:-sixth}", --host, mosquitto]
+    volumes: ["./models:/app/models:ro", "./data/vitaldb:/app/data/vitaldb:ro"]
 
 volumes:
   influxdb:
