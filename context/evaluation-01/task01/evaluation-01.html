@@ -52,6 +52,8 @@ details.fold > summary { cursor: pointer; color: var(--ink2); }
 details.fold > summary .tag { font-weight: 600; color: var(--s5); margin-right: 8px; }
 details.fold.code { border-color: #8a9bb3; background: #1f252e; }
 details.fold.code > summary .tag { color: #a9b8cc; }
+details.fold.ans { border-color: #8a9bb3; background: #1f252e; }       /* answer to a study mark */
+details.fold.ans > summary .tag { color: #a9b8cc; }
 
 /* boxes */
 div.box { background: #1b2635; border-left: 3px solid var(--s1); border-radius: 4px; padding: 8px 12px; margin: 12px 0; }
@@ -200,7 +202,7 @@ body.mk-focus .mk-dim:hover { opacity: .7; }
 
 <header>
   <h1>Architecture of the anaesthesia digital twin</h1>
-  <p class="meta">Evaluation 01 · Task 01 · repository <code>BlooDT</code>, branch <code>tai/evaluation-01</code>, commit <code>ec45ac4</code> · built 2026-11-20</p>
+  <p class="meta">Evaluation 01 · Task 01 · repository <code>BlooDT</code>, branch <code>tai/evaluation-01</code>, commit <code>37398f9</code> · built 2026-11-20</p>
   <p class="small">This report helps you to understand the architecture of the project.
      It describes the layers, the data flow, the main ideas and the extension points.
      It does not change the code.</p>
@@ -967,6 +969,40 @@ min_duration_s: 3600</code></pre>
       <tr><td>Propofol Ce, PAS Marsh vs pump (MDAPE)</td><td class="num">2.6 %</td><td>–</td></tr>
     </tbody>
   </table>
+
+  <!-- [Answer · marker mmwp3wpthq6w] What does "Model" mean, and why is it a number such as 12.09? -->
+  <details class="fold ans"><summary><span class="tag">Answer</span>What does “Model” mean in this table, and why is its value a number such as 12.09?</summary>
+    <p><b>Short answer.</b> The table does not list models. Each row is one question, and each cell is a <b>score</b> (an error or a quality value).
+    “Model” is the score of the trained model. “Baseline” is the score of a simple rule that does not learn.
+    For MAP, 12.09 means: the trained model's forecast of MAP 5 min ahead has an average error of about 12 mmHg.</p>
+    <p><b>The row “MAP RMSE at 5 min (mmHg)”, step by step.</b></p>
+    <ol>
+      <li>The “model” is the LightGBM forecaster for the target <code>map</code> at the horizon 300 s (<code>y.map@300</code>). Section 8.2 describes it.</li>
+      <li>At each decision point of each test patient, the forecaster predicts the MAP 5 min later.</li>
+      <li>The code then compares each forecast with the MAP that the monitor measured 5 min later. The difference is the error of that point.</li>
+      <li>RMSE (root mean square error) is one number for all these errors: RMSE = √(mean of error²). Its unit is the unit of the target, here mmHg.</li>
+      <li>Lower is better. RMSE = 0 means that every forecast is exactly correct.</li>
+    </ol>
+    <p><b>The baseline “persistence”</b> is the rule “MAP in 5 min = MAP now”. Its RMSE is 16.19 mmHg.
+    The trained model has 12.09 mmHg. Thus the model decreases the error by about 25 % (from 16.19 to 12.09).
+    This comparison shows that the model learned something useful: it is better than the simple rule.</p>
+    <p><b>Example with one decision point.</b> MAP now is 80 mmHg. The monitor shows 72 mmHg 5 min later.
+    The model forecast is 75 mmHg: its error is 3 mmHg. Persistence forecasts 80 mmHg: its error is 8 mmHg.
+    RMSE collects such errors over all test points into one number.</p>
+    <p><b>The other rows use other scores.</b></p>
+    <table>
+      <thead><tr><th>Row</th><th>Score</th><th>Better when</th><th>Baseline rule</th></tr></thead>
+      <tbody>
+        <tr><td>BIS RMSE at 5 min</td><td>Average error of the BIS forecast (BIS units)</td><td>lower</td><td>BIS in 5 min = BIS now</td></tr>
+        <tr><td>Hypotension onset AUROC</td><td>How well the warning score puts the points before a hypotension above the other points (0.5 = random, 1 = perfect)</td><td>higher</td><td>“MAP already low”: lower MAP now gives a higher score</td></tr>
+        <tr><td>Propofol suggester log loss</td><td>How good the probabilities of decrease / hold / increase are</td><td>lower</td><td>Always give the average shares of the training data</td></tr>
+        <tr><td>Propofol Ce MDAPE</td><td>Median error in % between the PAS Marsh concentration and the pump's own value. This is a check of an expert model, not of a trained model.</td><td>lower</td><td>–</td></tr>
+      </tbody>
+    </table>
+    <p><b>Where the numbers come from in the code.</b> <code>evaluation.forecaster</code> computes <code>"model": {"mae", "rmse"}</code> and <code>"baseline_persistence": {"mae", "rmse"}</code>.
+    <code>pipeline.train</code> writes them to <code>models/&lt;run&gt;/metrics.json</code>, under <code>clean</code> → <code>y.map@300</code>.
+    <code>docs/results.md</code> copies them from the run <code>fourth</code>.</p>
+  </details>
   <div class="box"><p>Important for the architecture: the ablation shows that the expert models add almost nothing to the forecast accuracy (BIS RMSE −0.02).
   The value of the experts is elsewhere: concentrations that no monitor shows, and the what-if effects.</p></div>
 </details>
@@ -1036,7 +1072,7 @@ min_duration_s: 3600</code></pre>
       <tr><td>Foldable sections</td><td><code>&lt;details&gt;</code> elements, or JavaScript</td><td><code>&lt;details class="sec"&gt;</code></td><td>No script is necessary. The marker tool uses these sections for its keys.</td></tr>
       <tr><td>Diagrams</td><td>(a) Inline SVG written by hand. (b) Mermaid from a CDN. (c) Images made by a script.</td><td>(a)</td><td>The page stays one file and works offline. No external script.</td></tr>
       <tr><td>Module table</td><td>Write by hand, or make it from the code</td><td>Make it with <code>ast</code> in <code>build.py</code></td><td>The table stays true to the code. Run <code>build.py</code> again after a code change.</td></tr>
-      <tr><td>Source of facts</td><td>Run the pipeline, or read the code and docs</td><td>Read the code at commit <code>ec45ac4</code>, <code>README.md</code>, <code>GLOSSARY.md</code>, the ADRs, <code>docs/results.md</code> and the project plan PDF</td><td><code>data/</code> and <code>models/</code> are not on this machine. The numbers come from <code>docs/results.md</code>.</td></tr>
+      <tr><td>Source of facts</td><td>Run the pipeline, or read the code and docs</td><td>Read the code at commit <code>37398f9</code>, <code>README.md</code>, <code>GLOSSARY.md</code>, the ADRs, <code>docs/results.md</code> and the project plan PDF</td><td><code>data/</code> and <code>models/</code> are not on this machine. The numbers come from <code>docs/results.md</code>.</td></tr>
       <tr><td>Build</td><td>Edit the final HTML, or build it from a template</td><td>Template + <code>build.py</code></td><td>Same method as the reference report: edit the template, run the script, get one self-contained file.</td></tr>
     </tbody>
   </table>
@@ -1083,6 +1119,7 @@ min_duration_s: 3600</code></pre>
 </script>
 <script type="application/json" id="mk-committed">
 {"version": 1, "marks": [
+  {"id":"mmwp3wpthq6w","kind":"block","level":"struggle","where":"14 Results at a glance","key":"s-results:2084d725","quote":"MAP RMSE at 5 min (mmHg)12.0916.19 (persistence)","note":"I don't get it. what does Model mean here? why does model colume maps to a number sch as 12.09?","date":"2026-11-20"}
 ]}
 </script>
 <script>

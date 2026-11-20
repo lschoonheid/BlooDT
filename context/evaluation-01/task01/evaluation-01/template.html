@@ -758,6 +758,40 @@ min_duration_s: 3600</code></pre>
       <tr><td>Propofol Ce, PAS Marsh vs pump (MDAPE)</td><td class="num">2.6 %</td><td>–</td></tr>
     </tbody>
   </table>
+
+  <!-- [Answer · marker mmwp3wpthq6w] What does "Model" mean, and why is it a number such as 12.09? -->
+  <details class="fold ans"><summary><span class="tag">Answer</span>What does “Model” mean in this table, and why is its value a number such as 12.09?</summary>
+    <p><b>Short answer.</b> The table does not list models. Each row is one question, and each cell is a <b>score</b> (an error or a quality value).
+    “Model” is the score of the trained model. “Baseline” is the score of a simple rule that does not learn.
+    For MAP, 12.09 means: the trained model's forecast of MAP 5 min ahead has an average error of about 12 mmHg.</p>
+    <p><b>The row “MAP RMSE at 5 min (mmHg)”, step by step.</b></p>
+    <ol>
+      <li>The “model” is the LightGBM forecaster for the target <code>map</code> at the horizon 300 s (<code>y.map@300</code>). Section 8.2 describes it.</li>
+      <li>At each decision point of each test patient, the forecaster predicts the MAP 5 min later.</li>
+      <li>The code then compares each forecast with the MAP that the monitor measured 5 min later. The difference is the error of that point.</li>
+      <li>RMSE (root mean square error) is one number for all these errors: RMSE = √(mean of error²). Its unit is the unit of the target, here mmHg.</li>
+      <li>Lower is better. RMSE = 0 means that every forecast is exactly correct.</li>
+    </ol>
+    <p><b>The baseline “persistence”</b> is the rule “MAP in 5 min = MAP now”. Its RMSE is 16.19 mmHg.
+    The trained model has 12.09 mmHg. Thus the model decreases the error by about 25 % (from 16.19 to 12.09).
+    This comparison shows that the model learned something useful: it is better than the simple rule.</p>
+    <p><b>Example with one decision point.</b> MAP now is 80 mmHg. The monitor shows 72 mmHg 5 min later.
+    The model forecast is 75 mmHg: its error is 3 mmHg. Persistence forecasts 80 mmHg: its error is 8 mmHg.
+    RMSE collects such errors over all test points into one number.</p>
+    <p><b>The other rows use other scores.</b></p>
+    <table>
+      <thead><tr><th>Row</th><th>Score</th><th>Better when</th><th>Baseline rule</th></tr></thead>
+      <tbody>
+        <tr><td>BIS RMSE at 5 min</td><td>Average error of the BIS forecast (BIS units)</td><td>lower</td><td>BIS in 5 min = BIS now</td></tr>
+        <tr><td>Hypotension onset AUROC</td><td>How well the warning score puts the points before a hypotension above the other points (0.5 = random, 1 = perfect)</td><td>higher</td><td>“MAP already low”: lower MAP now gives a higher score</td></tr>
+        <tr><td>Propofol suggester log loss</td><td>How good the probabilities of decrease / hold / increase are</td><td>lower</td><td>Always give the average shares of the training data</td></tr>
+        <tr><td>Propofol Ce MDAPE</td><td>Median error in % between the PAS Marsh concentration and the pump's own value. This is a check of an expert model, not of a trained model.</td><td>lower</td><td>–</td></tr>
+      </tbody>
+    </table>
+    <p><b>Where the numbers come from in the code.</b> <code>evaluation.forecaster</code> computes <code>"model": {"mae", "rmse"}</code> and <code>"baseline_persistence": {"mae", "rmse"}</code>.
+    <code>pipeline.train</code> writes them to <code>models/&lt;run&gt;/metrics.json</code>, under <code>clean</code> → <code>y.map@300</code>.
+    <code>docs/results.md</code> copies them from the run <code>fourth</code>.</p>
+  </details>
   <div class="box"><p>Important for the architecture: the ablation shows that the expert models add almost nothing to the forecast accuracy (BIS RMSE −0.02).
   The value of the experts is elsewhere: concentrations that no monitor shows, and the what-if effects.</p></div>
 </details>

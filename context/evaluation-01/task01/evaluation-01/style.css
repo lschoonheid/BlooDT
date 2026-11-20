@@ -37,6 +37,8 @@ details.fold > summary { cursor: pointer; color: var(--ink2); }
 details.fold > summary .tag { font-weight: 600; color: var(--s5); margin-right: 8px; }
 details.fold.code { border-color: #8a9bb3; background: #1f252e; }
 details.fold.code > summary .tag { color: #a9b8cc; }
+details.fold.ans { border-color: #8a9bb3; background: #1f252e; }       /* answer to a study mark */
+details.fold.ans > summary .tag { color: #a9b8cc; }
 
 /* boxes */
 div.box { background: #1b2635; border-left: 3px solid var(--s1); border-radius: 4px; padding: 8px 12px; margin: 12px 0; }
