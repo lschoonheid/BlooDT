@@ -12,7 +12,8 @@ interaction surface and a MAP/HR model. Deviations from the Simulink model:
   concentrations and HR held at their step midpoints.
 - AnestheSIM takes MAP0/HR0 from the pre-induction recording (estimateBaselines.m),
   which is not causal. Here MAP0 defaults to that file's covariate fallback and HR0
-  to the published 70.8 bpm; both can be overridden.
+  to the published 70.8 bpm; `baseline="pre_dose"` takes them from what was observed
+  before the first dose instead (see baseline.py), and both can be overridden.
 - AnestheSIM starts the noxious-stimulation term of the turnover model at t = 0.
   The incision time is not known causally, so stimulation is off unless
   `stim_onset_s` is given.
@@ -26,6 +27,7 @@ import numpy as np
 from scipy.linalg import block_diag, expm
 
 from ..patients import Covariates
+from . import baseline as baselines
 
 NE_MOLAR_MASS = 169.18  # g/mol, buildPatientModels.m
 MAC40 = {"sevoflurane": 1.8, "desflurane": 6.6}  # vol%, Mapleson 1996 (VolatileModel.m)
@@ -133,6 +135,10 @@ class AnestheSimExpert:
     "bouillon" or "minto" (intravenous only). `map_model`: "separable" (turnover model
     plus Joachim pressor effect) or "unified" (three-drug effect-site model).
     HR always comes from the turnover model.
+
+    `lookahead` gives the signals after holding the current inputs for a while,
+    without disturbing the stepped state: the model's own forecast of where the
+    patient is heading if nothing changes.
     """
 
     inputs = (
@@ -165,6 +171,7 @@ class AnestheSimExpert:
         map0: float | None = None,  # mmHg; default: covariate estimate
         hr0: float | None = None,  # /min; default: 70.8
         stim_onset_s: float | None = None,  # s from case start; None: no stimulation
+        baseline: str = "covariates",  # or "pre_dose": MAP0/HR0 observed before the first dose
     ):
         if bis_model not in BIS_PARAMS:
             raise ValueError(f"unknown bis_model {bis_model!r}")
@@ -177,6 +184,11 @@ class AnestheSimExpert:
         self.map0_override = map0
         self.hr0_override = hr0
         self.stim_onset_s = stim_onset_s
+        if baseline not in ("covariates", "pre_dose"):
+            raise ValueError(f"unknown baseline {baseline!r}")
+        self.baseline = baseline
+        if baseline == "pre_dose":
+            self.inputs = type(self).inputs + baselines.INPUTS
 
     def reset(self, covariates: Covariates, step_s: float) -> None:
         c = covariates
@@ -215,6 +227,15 @@ class AnestheSimExpert:
         self.decay = math.exp(-self.kout * step_s)
         self.map_turnover, self.hr = self.map0, self.hr0
         self.t = 0.0
+        self.pre_dose = baselines.PreDoseBaseline() if self.baseline == "pre_dose" else None
+
+    def _set_baseline(self, map0: float | None, hr0: float | None) -> None:
+        """Re-baseline before any drug is given (the model is still at rest)."""
+        if map0 is not None and self.map0_override is None:
+            self.map0 = min(max(map0, 50.0), 150.0)
+        if hr0 is not None and self.hr0_override is None:
+            self.hr0 = min(max(hr0, 35.0), 140.0)
+        self.map_turnover, self.hr = self.map0, self.hr0
 
     def _bis(self, ce_p: float, ce_r: float, ce_sevo: float, ce_des: float) -> float:
         # bisMinto.m, bisBouillon.m, bisGrecoVolatile.m
@@ -252,6 +273,26 @@ class AnestheSimExpert:
         self.hr = hr_new
 
     def step(self, inputs: Mapping[str, float]) -> Mapping[str, float]:
+        if self.pre_dose is not None and self.pre_dose.update(inputs):
+            self._set_baseline(self.pre_dose.map0, self.pre_dose.hr0)
+        return self._advance(inputs)
+
+    lookahead_signals = ("propofol_ce", "remifentanil_ce", "bis", "map", "hr")
+
+    def lookahead(self, held: Mapping[str, float], steps: list[int]) -> list[Mapping[str, float]]:
+        """Signals after holding `held` (one step's inputs) for each of `steps` steps,
+        starting from the current state; the state is left as it was."""
+        state = (self.x.copy(), self.u.copy(), deque(self.ne_queue), self.map_turnover, self.hr, self.t)
+        out, done = [], 0
+        for n in sorted(steps):
+            for _ in range(n - done):
+                y = self._advance(held)
+            done = n
+            out.append(y)
+        self.x, self.u, self.ne_queue, self.map_turnover, self.hr, self.t = state
+        return out
+
+    def _advance(self, inputs: Mapping[str, float]) -> Mapping[str, float]:
         dt = self.step_s
         u = self.u
         u[0] = inputs["propofol_dose"] / dt  # mg/s

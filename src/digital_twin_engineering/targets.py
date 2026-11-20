@@ -3,12 +3,18 @@
 A "value" target is a channel's observed value one horizon ahead; an "event" target
 is whether an event (a boolean mask over the case) is ongoing at any time within the
 next horizon. Each (target, horizon) pair gets its own forecaster.
+
+An event target may say when the event is already under way judging by the current
+value alone (`ongoing`); evaluation then also scores the forecaster on onsets, the
+decision points where it isn't, since "MAP is low now" already predicts most of
+"MAP will be low soon".
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 
 from .channels import STALENESS
@@ -22,6 +28,7 @@ class Target:
     kind: Literal["value", "event"]
     event: Callable[[pd.Series], pd.Series] | None = None  # for "event": channel -> mask
     max_staleness_s: float = 10  # "value": the future observation must be this fresh
+    ongoing: Callable[[np.ndarray], np.ndarray] | None = None  # "event": current value -> under way
 
     def label(self, frame: pd.DataFrame, horizon_s: float, step_s: float = 1) -> pd.Series:
         """The label at every grid point of a case frame (NaN where unknown)."""
@@ -41,13 +48,17 @@ class Target:
         return f"y.{self.name}@{int(horizon_s)}"
 
 
+def _below_65(map_: np.ndarray) -> np.ndarray:
+    return map_ < 65
+
+
 TARGETS = {
     t.name: t
     for t in [
         Target("map", "map", "value"),
         Target("bis", "bis", "value"),
         Target("hr", "hr", "value"),
-        Target("hypotension", "map", "event", event=hypotension_mask),
+        Target("hypotension", "map", "event", event=hypotension_mask, ongoing=_below_65),
     ]
 }
 

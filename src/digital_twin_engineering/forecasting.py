@@ -67,17 +67,25 @@ def _fit(X: np.ndarray, y: np.ndarray, use: np.ndarray, target: str, params: dic
     return model
 
 
-def _arrays(rows: pd.DataFrame, target: str, horizon_s: int) -> tuple[list[str], np.ndarray, np.ndarray]:
+def _arrays(
+    rows: pd.DataFrame, target: str, horizon_s: int, features: list[str] | None = None
+) -> tuple[list[str], np.ndarray, np.ndarray]:
     """Feature names, a float32 feature matrix (one copy, reused across folds) and labels."""
-    features = feature_columns(rows)
+    features = features if features is not None else feature_columns(rows)
     X = rows[features].to_numpy(np.float32)
     y = rows[TARGETS[target].column(horizon_s)].to_numpy(np.float64)
     return features, X, y
 
 
-def fit(rows: pd.DataFrame, target: str, horizon_s: int, params: dict[str, Any]) -> Forecaster:
-    """Train on the rows whose label is known."""
-    features, X, y = _arrays(rows, target, horizon_s)
+def fit(
+    rows: pd.DataFrame,
+    target: str,
+    horizon_s: int,
+    params: dict[str, Any],
+    features: list[str] | None = None,
+) -> Forecaster:
+    """Train on the rows whose label is known, on `features` (default: every `x.` column)."""
+    features, X, y = _arrays(rows, target, horizon_s, features)
     model = _fit(X, y, np.arange(len(y)), target, params)
     return Forecaster(target, horizon_s, features, model)
 

@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 from digital_twin_engineering.channels import CHANNELS, Perturbation, cumulative_dose, to_grid
 
@@ -81,3 +82,40 @@ def test_perturbation_delays_and_drops_records():
     pt, pv = Perturbation(max_delay_s=10, dropouts_per_hour=10, mean_dropout_s=60).apply(t, v, rng)
     assert len(pt) < len(t) and len(pt) == len(pv)
     assert pt[0] >= t[0]
+
+
+def test_perturbation_of_a_channel_ignores_other_channels(monkeypatch):
+    from digital_twin_engineering import channels
+
+    t = np.arange(0, 3600, 2.0)
+
+    class Track:
+        recs = [{"dt": x, "val": 80.0 + (x % 7)} for x in t]
+
+    class Vital:
+        dtstart, dtend = 0.0, 3600.0
+
+        def get_track_names(self):
+            return ["Solar8000/ART_MBP", "Solar8000/HR"]
+
+        def find_track(self, name):
+            return Track()
+
+    monkeypatch.setattr(channels.vdb, "load_vital", lambda caseid, tracks: Vital())
+    p = channels.Perturbation(max_delay_s=10, dropouts_per_hour=4)
+    alone = channels.load_channels(1, ["map"], perturbation=p, seed=3)
+    together = channels.load_channels(1, ["hr", "map"], perturbation=p, seed=3)
+    pd.testing.assert_series_equal(alone["map"], together["map"])
+
+
+def test_a_persistent_jump_counts_only_once_it_is_known():
+    # a refill re-bases the counter, but that is only clear 5 readings later, so the
+    # dose delivered meanwhile shows up when it becomes known, as it would live
+    t = np.arange(12.0)
+    v = np.array([1.0, 1.1, 1.2, 9.0, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8])
+    grid = np.arange(12.0)
+    dose, staleness = to_grid(CHANNELS["propofol_dose"], t, v, grid)
+    assert np.allclose(dose[3:8], 0)
+    assert np.isclose(dose[8], 0.5)  # readings 4-8, 0.1 each
+    assert np.isclose(dose.sum(), 1.2 - 1.0 + 9.8 - 9.0)
+    assert np.isclose(staleness[8], 0)

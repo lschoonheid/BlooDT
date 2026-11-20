@@ -18,14 +18,20 @@ def window_features(
 
     Level and setting channels get their last value plus mean, min, max, std and
     slope per window; expert signals (smooth by construction) only last value,
-    mean and slope; dose channels the amount given per window; staleness columns
-    only their current value.
+    mean and slope; expert lookaheads (`<expert>.<signal>@<h>`) their value and the
+    change from the signal's current value; dose channels the amount given per
+    window; staleness columns only their current value.
     """
     out = {}
     for col in frame.columns:
         x = frame[col]
         if col.endswith(STALENESS):
             out[f"x.{col}"] = x
+            continue
+        if "@" in col:
+            signal, horizon = col.split("@")
+            out[f"x.{col}"] = x
+            out[f"x.{signal}.change@{horizon}"] = x - frame[signal]
             continue
         channel = CHANNELS.get(col)
         if channel is not None and channel.kind == "dose":

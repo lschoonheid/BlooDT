@@ -1,6 +1,8 @@
 """Training data: one row per decision point, per case, cached per case.
 
-A case *frame* is its channels plus expert signals on the 1 s grid. A case's
+A case *frame* is its channels plus expert signals on the 1 s grid, cached as two
+stages: the channel grid, and each expert's signals on their own (so adding or
+changing one expert recomputes only that one). A case's
 *rows* are its decision points with features (`x.`), forecaster labels
 (`y.<target>@<horizon>`) and intervention labels (`y.suggest.<drug>.*`), plus
 `caseid`, `subjectid` and `t`.
@@ -24,27 +26,40 @@ from .patients import clinical, covariates
 from .targets import TARGETS
 
 
-def case_frame(caseid: int, config: Config, perturbed: bool = False) -> pd.DataFrame:
+def case_channels(caseid: int, config: Config, perturbed: bool = False) -> pd.DataFrame:
     def compute():
-        frame = load_channels(
+        return load_channels(
             caseid,
             list(config.all_channels),
             config.step_s,
             config.perturbation if perturbed else None,
             seed=config.seed * 100_000 + caseid,
         )
-        built = [experts.build(spec) for spec in config.experts]
-        if perturbed:
-            # perturbations only touch level channels; experts reading none of them
-            # would compute exactly what they did on the clean frame
-            clean = case_frame(caseid, config)
-            reuse = [e for e in built if not any(CHANNELS[n].kind == "level" for n in e.inputs)]
-            built = [e for e in built if e not in reuse]
-            frame = frame.join(clean[[c for e in reuse for c in clean if c.startswith(e.name + ".")]])
-        signals = experts.run(built, frame, covariates(caseid), config.step_s)
-        return frame.join(signals)
 
-    return stages.cached("frames", config.frame_key(perturbed), caseid, compute)
+    return stages.cached("channels", config.channels_key(perturbed), caseid, compute)
+
+
+def expert_signals(
+    caseid: int, config: Config, spec: dict, perturbed: bool = False
+) -> pd.DataFrame:
+    expert = experts.build(spec)
+    # perturbations only touch level channels; an expert reading none of them
+    # computes exactly what it does on the clean channels
+    perturbed = perturbed and any(CHANNELS[n].kind == "level" for n in expert.inputs)
+
+    def compute():
+        channels = case_channels(caseid, config, perturbed)
+        return experts.run(
+            [expert], channels, covariates(caseid), config.step_s, config.lookahead()
+        )
+
+    return stages.cached("experts", config.expert_key(spec, perturbed), caseid, compute)
+
+
+def case_frame(caseid: int, config: Config, perturbed: bool = False) -> pd.DataFrame:
+    frame = case_channels(caseid, config, perturbed)
+    parts = [expert_signals(caseid, config, spec, perturbed) for spec in config.experts]
+    return frame.join(parts) if parts else frame
 
 
 def decision_points(caseid: int, frame: pd.DataFrame, every_s: int) -> pd.Index:

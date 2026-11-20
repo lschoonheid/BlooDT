@@ -6,7 +6,7 @@ other configs' results stay on disk.
 
 The cache can't see code changes: bump the stage's entry in VERSIONS whenever a
 change alters what it computes (e.g. how channels are gridded or features built).
-A stage built on another (rows on frames) must be bumped with it.
+A stage built on another (experts on channels, rows on both) must be bumped with it.
 """
 
 import hashlib
@@ -23,8 +23,9 @@ DERIVED_DIR = Path(
     or Path(__file__).resolve().parents[2] / "data" / "derived"
 )
 VERSIONS = {
-    "frames": 3,  # 3: pump volumes rate-limited; glitches ignored, persistent jumps re-based
-    "rows": 4,  # 4: expert signals summarised by mean and slope only
+    "channels": 2,  # 2: dose totals count from when they become known
+    "experts": 2,
+    "rows": 6,  # 6: built from the channels and experts stages; expert lookahead changes
 }
 
 

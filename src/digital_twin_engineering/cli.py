@@ -6,7 +6,7 @@ import sys
 import pandas as pd
 
 from . import cohort as cohorts
-from . import dataset, inventory, pipeline, verification
+from . import ablation, dataset, inventory, pipeline, verification
 from .channels import CHANNELS
 from .config import Config
 
@@ -47,6 +47,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--run", required=True, help="name of the output folder under models/")
     p.add_argument("-j", "--jobs", type=int, default=16)
 
+    p = sub.add_parser("ablate", help="retrain forecasters without each group of inputs")
+    p.add_argument("config")
+    p.add_argument("cohort")
+    p.add_argument("--run", required=True, help="name of the output folder under models/")
+    p.add_argument("--only", nargs="+", help="variants to run (default: all)")
+    p.add_argument("-j", "--jobs", type=int, default=16)
+
+    p = sub.add_parser("replay", help="replay a case through the twin with a trained run's models")
+    p.add_argument("caseid", type=int)
+    p.add_argument("--run", required=True, help="the training run under models/")
+    p.add_argument("--out", help="write the decisions to this Parquet/CSV file")
+
     args = parser.parse_args(argv)
     pd.set_option("display.width", 200)
     pd.set_option("display.max_rows", 200)
@@ -75,6 +87,20 @@ def main(argv: list[str] | None = None) -> None:
         case "train":
             out = pipeline.train(Config.from_yaml(args.config), base, args.run, args.jobs)
             print(f"models and metrics -> {out}")
+        case "replay":
+            from .live import replayer
+
+            config, models = replayer.load_run(args.run)
+            decisions = replayer.replay(args.caseid, config, models)
+            if args.out:
+                write = decisions.to_csv if args.out.endswith(".csv") else decisions.to_parquet
+                write(args.out)
+            print(decisions.iloc[:: max(1, len(decisions) // 30)].to_string(float_format="{:.2f}".format))
+        case "ablate":
+            results = ablation.run(Config.from_yaml(args.config), base, args.run, args.only, args.jobs)
+            for test in results["all"]:
+                if test != "features":
+                    print(f"\n{test}:\n" + ablation.table(results, test).to_string(float_format="{:.3f}".format))
 
 
 if __name__ == "__main__":

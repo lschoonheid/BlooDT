@@ -12,6 +12,8 @@ Kinds:
 - "dose": a cumulative infused volume, turned into the amount delivered per grid step.
 """
 
+import zlib
+from collections import deque
 from dataclasses import dataclass
 from typing import Literal
 
@@ -114,8 +116,8 @@ class Perturbation:
         return t, v
 
 
-def cumulative_dose(t: np.ndarray, v: np.ndarray) -> np.ndarray:
-    """Total volume (mL) infused so far, from a pump's VOL readings at times `t`.
+class DoseCounter:
+    """Total volume (mL) infused so far, from a pump's VOL readings as they arrive.
 
     Seen in VitalDB: readings jitter down by ~0.2 mL; counters drop when a syringe
     or pump is restarted, not always to zero (65.09 -> 17.92); and single readings
@@ -123,28 +125,69 @@ def cumulative_dose(t: np.ndarray, v: np.ndarray) -> np.ndarray:
     rise a pump could deliver (at most _MAX_PUMP_ML_PER_S); small drops are
     jitter; any other jump is a glitch unless it persists for _RESET_PERSISTS
     readings, in which case the counter is re-based without counting the jump.
-    """
-    total = np.empty(len(v))
-    level, last_t, offset = (v[0], t[0], 0.0) if len(v) else (0.0, 0.0, 0.0)
 
-    def plausible(x, x_t, base, base_t):
+    A jump can only be judged once the readings after it are in, so `add` returns
+    the readings it could resolve as (time, total as of that reading, time it
+    became known); after a jump the total is known up to _RESET_PERSISTS readings
+    late, offline as live.
+    """
+
+    def __init__(self) -> None:
+        self._pending: deque[tuple[float, float]] = deque()
+        self._level: float | None = None
+        self._last_t = 0.0
+        self._offset = 0.0
+        self.total = np.nan  # as of the last resolved reading
+
+    def add(self, t: float, v: float) -> list[tuple[float, float, float]]:
+        self._pending.append((t, v))
+        return self._resolve(final=False)
+
+    def flush(self) -> list[tuple[float, float, float]]:
+        """Resolve what's left at the end of a recording."""
+        return self._resolve(final=True)
+
+    @staticmethod
+    def _plausible(x, x_t, base, base_t) -> bool:
         rise = x - base
         return -_JITTER_ML <= rise <= _MAX_PUMP_ML_PER_S * (x_t - base_t) + _JITTER_ML
 
-    for i, (x, x_t) in enumerate(zip(v, t)):
-        if not np.isfinite(x):
-            pass
-        elif plausible(x, x_t, level, last_t):
-            if x > level:
-                level = x
-            last_t = x_t
-        else:
-            after = slice(i + 1, i + 1 + _RESET_PERSISTS)
-            if all(plausible(y, y_t, x, x_t) for y, y_t in zip(v[after], t[after])):
-                offset += level - x
-                level, last_t = x, x_t
-        total[i] = offset + level
-    return total
+    def _resolve(self, final: bool) -> list[tuple[float, float, float]]:
+        out = []
+        known = self._pending[-1][0] if self._pending else np.nan
+        while self._pending:
+            x_t, x = self._pending[0]
+            if not np.isfinite(x):
+                pass
+            elif self._level is None:
+                self._level, self._last_t = x, x_t
+            elif self._plausible(x, x_t, self._level, self._last_t):
+                self._level = max(self._level, x)
+                self._last_t = x_t
+            else:
+                if len(self._pending) <= _RESET_PERSISTS and not final:
+                    break
+                after = list(self._pending)[1 : 1 + _RESET_PERSISTS]
+                if all(self._plausible(y, y_t, x, x_t) for y_t, y in after):
+                    self._offset += self._level - x
+                    self._level, self._last_t = x, x_t
+            self._pending.popleft()
+            if self._level is not None:
+                self.total = self._offset + self._level
+            out.append((x_t, self.total, known))
+        return out
+
+
+def cumulative_dose(t: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Total volume (mL) infused as of each of a pump's VOL readings (see DoseCounter)."""
+    return _dose_totals(t, v)[0]
+
+
+def _dose_totals(t: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per reading: the total volume as of it, and when that total became known."""
+    counter = DoseCounter()
+    out = [r for x_t, x in zip(t, v) for r in counter.add(x_t, x)] + counter.flush()
+    return np.array([r[1] for r in out], float), np.array([r[2] for r in out], float)
 
 
 def resolve(names: list[str], available: set[str]) -> dict[str, str | None]:
@@ -158,14 +201,18 @@ def to_grid(
     channel: Channel, t: np.ndarray, v: np.ndarray, grid: np.ndarray, factor: float = 1.0
 ) -> tuple[np.ndarray, np.ndarray]:
     """Values and staleness of one channel's raw records (times `t`, sorted) on
-    `grid`, converted to the channel's unit by `factor`."""
+    `grid`, converted to the channel's unit by `factor`. A dose total counts from
+    when it became known (see DoseCounter); its staleness from its reading."""
+    known = t
     if channel.kind == "dose":
-        v = cumulative_dose(t, v) * factor
+        v, known = _dose_totals(t, v)
+        v = v * factor
     else:
         v = v * factor
         ok = np.isfinite(v) & (v >= channel.valid[0]) & (v <= channel.valid[1])
         t, v = t[ok], v[ok]
-    idx = np.searchsorted(t, grid, side="right") - 1
+        known = t
+    idx = np.searchsorted(known, grid, side="right") - 1
     seen = idx >= 0
     values = np.full(len(grid), np.nan)
     staleness = np.full(len(grid), np.nan)
@@ -189,9 +236,9 @@ def load_channels(
     """A case's channels on a `step_s` grid from case start (index `t`, seconds).
 
     Columns: each channel in its canonical unit, plus `<channel>__staleness`.
-    Channels the case lacks are all-NaN.
+    Channels the case lacks are all-NaN. Each channel's perturbation depends only on
+    `seed` and the channel, not on which other channels are loaded.
     """
-    rng = np.random.default_rng(seed)
     tracks = sorted({t for n in names for t, _ in CHANNELS[n].tracks})
     vf = vdb.load_vital(caseid, tracks)
     chosen = resolve(names, set(vf.get_track_names()))
@@ -208,6 +255,7 @@ def load_channels(
         order = np.argsort(t, kind="stable")
         t, v = t[order], v[order]
         if perturbation is not None and channel.kind == "level":
+            rng = np.random.default_rng(None if seed is None else [seed, zlib.crc32(name.encode())])
             t, v = perturbation.apply(t, v, rng)
         factor = dict(channel.tracks)[track]
         cols[name], cols[name + STALENESS] = to_grid(channel, t, v, grid, factor)

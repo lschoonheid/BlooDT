@@ -2,11 +2,16 @@
 channels: [map, sbp, dbp, hr, bis, sqi, spo2, etco2, propofol_ce_pump, remifentanil_ce_pump]
 
 experts:
-  # Marsh_modified + Minto is what the Orchestra pumps run; it verifies our doses
-  - {kind: pas, name: pas_marsh, model_propo: Marsh_modified, model_remi: Minto, model_bis: Bouillon}
-  - {kind: pas, name: pas_schnider, model_propo: Schnider, model_remi: Minto, model_bis: Bouillon}
-  - {kind: pas, name: pas_eleveld, model_propo: Eleveld, model_remi: Eleveld, model_bis: Eleveld}
-  - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified}
+  # Marsh_modified + Minto is what the Orchestra pumps run; it verifies our doses.
+  # baseline: pre_dose sets resting MAP/HR to those seen before the first dose.
+  - {kind: pas, name: pas_marsh, model_propo: Marsh_modified, model_remi: Minto, model_bis: Bouillon, baseline: pre_dose}
+  - {kind: pas, name: pas_schnider, model_propo: Schnider, model_remi: Minto, model_bis: Bouillon, baseline: pre_dose}
+  - {kind: pas, name: pas_eleveld, model_propo: Eleveld, model_remi: Eleveld, model_bis: Eleveld, baseline: pre_dose}
+  - {kind: anesthesim, name: asim_greco, bis_model: greco, map_model: unified, baseline: pre_dose}
+  - {kind: anesthesim, name: asim_separable, bis_model: greco, map_model: separable, baseline: pre_dose}
+# Experts that can forecast (AnestheSIM; PAS is too slow) predict this far ahead
+# at every decision point, holding the current infusion rates.
+expert_lookahead_s: [300]
 
 # Add or remove a vital here (and in targets.TARGETS if it's new), then retrain.
 targets: [map, bis, hypotension]

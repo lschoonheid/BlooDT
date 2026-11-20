@@ -32,6 +32,8 @@ class SuggestionConfig:
 class Config:
     channels: tuple[str, ...]
     experts: tuple[dict[str, Any], ...] = ()
+    # experts that can forecast do so this far ahead at each decision point
+    expert_lookahead_s: tuple[int, ...] = ()
     targets: tuple[str, ...] = ("map", "bis", "hypotension")
     horizons_s: tuple[int, ...] = (300,)
     step_s: float = 1.0
@@ -46,8 +48,13 @@ class Config:
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "Config":
-        spec = yaml.safe_load(Path(path).read_text())
-        for key in ("channels", "experts", "targets", "horizons_s"):
+        return cls.from_dict(yaml.safe_load(Path(path).read_text()))
+
+    @classmethod
+    def from_dict(cls, spec: dict[str, Any]) -> "Config":
+        """From a YAML config's contents, or `asdict` of a Config (as in a run's config.json)."""
+        spec = dict(spec)
+        for key in ("channels", "experts", "expert_lookahead_s", "targets", "horizons_s"):
             if key in spec:
                 spec[key] = tuple(spec[key])
         if "features" in spec:
@@ -68,20 +75,37 @@ class Config:
         needed += list(self.suggestion.drugs.values())
         return tuple(dict.fromkeys(needed))
 
-    def frame_key(self, perturbed: bool) -> dict[str, Any]:
-        """The parts of the config a case frame depends on (its cache key)."""
+    def lookahead(self):
+        from .experts import Lookahead
+
+        return Lookahead(self.expert_lookahead_s, self.decision_every_s) if self.expert_lookahead_s else None
+
+    def channels_key(self, perturbed: bool) -> dict[str, Any]:
+        """The parts of the config a case's channel grid depends on (its cache key)."""
         return {
             "channels": self.all_channels,
-            "experts": self.experts,
             "step_s": self.step_s,
             "perturbation": asdict(self.perturbation) if perturbed and self.perturbation else None,
             "seed": self.seed,
         }
 
+    def expert_key(self, spec: dict[str, Any], perturbed: bool) -> dict[str, Any]:
+        """The parts of the config one expert's signals depend on. Channels are
+        perturbed independently, so the other channels loaded don't matter."""
+        lookahead = self.lookahead()
+        return {
+            "expert": spec,
+            "step_s": self.step_s,
+            "perturbation": asdict(self.perturbation) if perturbed and self.perturbation else None,
+            "seed": self.seed,
+            "lookahead": asdict(lookahead) if lookahead else None,
+        }
+
     def rows_key(self, perturbed: bool) -> dict[str, Any]:
         """The parts of the config a case's decision-point rows depend on."""
         return {
-            "frame": self.frame_key(perturbed),
+            "channels": self.channels_key(perturbed),
+            "experts": [self.expert_key(spec, perturbed) for spec in self.experts],
             "targets": self.targets,
             "horizons_s": self.horizons_s,
             "decision_every_s": self.decision_every_s,

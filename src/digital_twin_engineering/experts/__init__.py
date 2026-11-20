@@ -5,13 +5,21 @@ pipeline (`run`) and the live twin drive it the same way. Expert signals are
 inputs to the forecasters, not competing predictions; see
 docs/adr/0001-expert-models-feed-the-forecaster.md.
 
+An expert may also implement `lookahead(held, steps)`: its signals after holding one
+step's inputs for a number of steps, leaving its state untouched. `run` then adds
+`<expert>.<signal>@<horizon>` columns at every decision point, the expert's own
+forecast of what happens if the current infusion rates are kept.
+
 Experts are built from config specs like `{"kind": "pas", "name": "pas_eleveld",
 "model_propo": "Eleveld", ...}`; `kind` picks the class from `KINDS` and every other
 key except `name` goes to its constructor.
 """
 
+from collections import deque
 from collections.abc import Mapping
 from typing import Any, Protocol
+
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -33,6 +41,17 @@ class Expert(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class Lookahead:
+    """When and how far experts forecast: every `every_s` seconds of case time (the
+    decision points), for each horizon, holding each dose input at its mean over the
+    last `rate_window_s` (single steps are too jittery) and other inputs as they are."""
+
+    horizons_s: tuple[int, ...]
+    every_s: int
+    rate_window_s: float = 60
+
+
 def _kinds() -> dict[str, type]:
     from .anesthesim import AnestheSimExpert
     from .pas import PasExpert
@@ -46,26 +65,79 @@ def build(spec: Mapping[str, Any]) -> Expert:
     return _kinds()[kind](**params)
 
 
+class Runner:
+    """Drives one expert through a case a grid step at a time, as `run` does offline
+    and the live twin does online: missing doses count as 0 (no pump means no
+    drug), and at decision points experts that can look ahead do."""
+
+    def __init__(
+        self,
+        expert: Expert,
+        covariates: Covariates,
+        step_s: float,
+        lookahead: Lookahead | None = None,
+    ):
+        self.expert = expert
+        self.step_s = step_s
+        expert.reset(covariates, step_s)
+        self.doses = [n for n in expert.inputs if n.endswith("_dose")]
+        self.lookahead = lookahead if lookahead and hasattr(expert, "lookahead") else None
+        self.ahead: dict[str, float] = {}
+        if self.lookahead:
+            horizons = sorted(self.lookahead.horizons_s)
+            self.steps = [round(h / step_s) for h in horizons]
+            self.ahead_names = [f"{s}@{h}" for h in horizons for s in expert.lookahead_signals]
+            self.ahead = dict.fromkeys(self.ahead_names, np.nan)
+            window = max(1, round(self.lookahead.rate_window_s / step_s))
+            self.recent = {n: deque(maxlen=window) for n in self.doses}
+
+    @property
+    def columns(self) -> list[str]:
+        """The output columns, without the `<expert>.` prefix."""
+        return list(self.expert.signals) + (self.ahead_names if self.lookahead else [])
+
+    def step(self, t: float, inputs: Mapping[str, float]) -> dict[str, float]:
+        """This step's signals (and lookaheads, carried forward between decision points)."""
+        now = {n: inputs[n] for n in self.expert.inputs}
+        for n in self.doses:
+            if not now[n] == now[n]:  # NaN
+                now[n] = 0.0
+        y = self.expert.step(now)
+        out = {s: y[s] for s in self.expert.signals}
+        if self.lookahead:
+            for n in self.doses:
+                self.recent[n].append(now[n])
+            if round(t) % self.lookahead.every_s == 0:
+                held = now | {n: sum(r) / len(r) for n, r in self.recent.items()}
+                ys = self.expert.lookahead(held, self.steps)
+                self.ahead = dict(
+                    zip(self.ahead_names, (y[s] for y in ys for s in self.expert.lookahead_signals))
+                )
+            out |= self.ahead
+        return out
+
+
 def run(
-    experts: list[Expert], frame: pd.DataFrame, covariates: Covariates, step_s: float
+    experts: list[Expert],
+    frame: pd.DataFrame,
+    covariates: Covariates,
+    step_s: float,
+    lookahead: Lookahead | None = None,
 ) -> pd.DataFrame:
     """Step every expert through a case's channel frame.
 
     Returns one column per expert signal, named `<expert>.<signal>`, on the frame's
-    index. Missing inputs are passed as 0 for doses (no pump means no drug) and NaN
-    otherwise; experts decide what NaN means for them.
+    index, plus lookahead columns for experts that support it (see `Runner`).
     """
     out = {}
+    t = frame.index.to_numpy()
     for expert in experts:
-        expert.reset(covariates, step_s)
-        inputs = {
-            name: frame[name].fillna(0).to_numpy() if name.endswith("_dose") else frame[name].to_numpy()
-            for name in expert.inputs
-        }
-        signals = np.full((len(frame), len(expert.signals)), np.nan)
+        runner = Runner(expert, covariates, step_s, lookahead)
+        columns = {n: frame[n].to_numpy() for n in expert.inputs}
+        signals = np.full((len(frame), len(runner.columns)), np.nan)
         for i in range(len(frame)):
-            y = expert.step({name: values[i] for name, values in inputs.items()})
-            signals[i] = [y[s] for s in expert.signals]
-        for j, s in enumerate(expert.signals):
-            out[f"{expert.name}.{s}"] = signals[:, j]
+            y = runner.step(t[i], {n: v[i] for n, v in columns.items()})
+            signals[i] = [y[c] for c in runner.columns]
+        for j, c in enumerate(runner.columns):
+            out[f"{expert.name}.{c}"] = signals[:, j]
     return pd.DataFrame(out, index=frame.index)

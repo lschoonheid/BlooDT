@@ -2,7 +2,8 @@
 
 - value targets: MAE/RMSE vs persistence (the current value stays the same)
 - event targets: AUROC/AUPRC and sensitivity at a fixed alert rate vs "MAP already
-  low" (score = -current MAP), as in Chaari et al.
+  low" (score = -current MAP), as in Chaari et al.; also on onsets only (decision
+  points where the event isn't already under way), where that baseline is weakest
 - suggestions: per-direction AUROC and log loss vs the class prior; MAE of the
   suggested setting vs keeping the current one
 """
@@ -41,12 +42,24 @@ def forecaster(f: Forecaster, rows: pd.DataFrame, alert_rate: float = 0.1) -> di
         y = y.astype(int)
         has_current = np.isfinite(current)
         baseline = _event_metrics(y[has_current], -current[has_current], alert_rate)
-        return {
+        result = {
             "n": len(y),
             "prevalence": float(y.mean()),
             "model": _event_metrics(y, pred, alert_rate),
             "baseline_map_already_low": baseline,
         }
+        if target.ongoing is not None:
+            onset = has_current & ~target.ongoing(current)
+            if 0 < y[onset].sum() < onset.sum():
+                result["onset"] = {
+                    "n": int(onset.sum()),
+                    "prevalence": float(y[onset].mean()),
+                    "model": _event_metrics(y[onset], pred[onset], alert_rate),
+                    "baseline_map_already_low": _event_metrics(
+                        y[onset], -current[onset], alert_rate
+                    ),
+                }
+        return result
 
     def errors(p):
         ok = np.isfinite(p)

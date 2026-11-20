@@ -1,3 +1,5 @@
 # Channels sit on a causal 1 s grid with explicit staleness, never interpolated
 
 Tracks arrive at their own rates (BIS every 1 s, Solar8000 numerics every 2 s, pumps irregularly) and with gaps and artefacts. We put every channel on a 1 s grid by carrying the last observed value forward and record, per channel, its staleness (seconds since that observation); values outside a physiological range are dropped before this, so artefacts show up as growing staleness. We rejected interpolation because it uses the next observation (leaking the future) and hides gaps that the live twin will face; the live twin builds the same view tick by tick, so training and serving see identical inputs. Robustness to sensor lag and dropout comes from perturbing the raw records (delays, dropped spans) during training, not from cleaning them away.
+
+The same holds for pump volumes: a jump in a volume counter can only be told apart from a glitch once the next few readings are in, so on the grid a dose counts from the moment it could be known, not from the reading it belongs to. The twin, fed raw records one by one, reproduces the offline grid exactly (tests/test_live.py).

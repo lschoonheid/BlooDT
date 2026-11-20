@@ -42,6 +42,14 @@ _Avoid_: Mixture of experts, MoE, simulator
 One time series produced by an expert model for a case, such as propofol effect-site concentration or model-predicted BIS.
 _Avoid_: Expert feature, prediction
 
+**Expert lookahead**:
+An expert model's own forecast at a decision point: where its signals would be after a horizon if the current infusion rates were kept.
+_Avoid_: Simulation, what-if (for this specific forecast)
+
+**Pre-dose baseline**:
+A patient's resting mean arterial pressure and heart rate, taken from what was observed before the first drug dose of a case.
+_Avoid_: Pre-induction baseline (that would need the whole pre-induction period), MAP0 (in prose)
+
 **Forecaster**:
 A learned model that predicts a target at a horizon from tracks, expert signals and patient covariates.
 _Avoid_: Predictor, ML model
@@ -60,6 +68,9 @@ _Avoid_: Lookahead, lead time (lead time is the evaluation metric for warnings)
 **Hypotension event**:
 Mean arterial pressure below 65 mmHg sustained for at least one minute.
 _Avoid_: Low BP, IOH (in code)
+
+**Onset**:
+A decision point at which an event is not already under way, judging by the current value alone; forecasting an event matters most at onsets.
 
 ## Interventions
 

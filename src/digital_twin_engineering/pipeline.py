@@ -32,12 +32,12 @@ def _rows(caseids: list[int], config: Config, jobs: int) -> tuple[pd.DataFrame, 
     return clean, perturbed
 
 
-def train(config: Config, cohort: Cohort, run: str, jobs: int = 16) -> Path:
-    out = MODELS_DIR / run
-    out.mkdir(parents=True, exist_ok=True)
-    cohort.save_manifest()
+def split(
+    config: Config, cohort: Cohort, jobs: int = 16
+) -> tuple[pd.DataFrame, dict[str, pd.DataFrame], int]:
+    """Training rows, test rows per test set ("clean", and "perturbed" when a
+    perturbation is configured) and the number of cases the rows come from."""
     clean, perturbed = _rows(cohort.caseids(), config, jobs)
-
     is_train, _ = splits.train_test(clean, config.test_fraction, config.seed)
     test_sets = {"clean": clean[~is_train].reset_index(drop=True)}
     train_rows = clean[is_train]
@@ -57,7 +57,14 @@ def train(config: Config, cohort: Cohort, run: str, jobs: int = 16) -> Path:
         test_sets["perturbed"] = perturbed[~in_train].reset_index(drop=True)
     cases = int(clean.caseid.nunique())
     del clean, perturbed
-    train_rows = train_rows.reset_index(drop=True)
+    return train_rows.reset_index(drop=True), test_sets, cases
+
+
+def train(config: Config, cohort: Cohort, run: str, jobs: int = 16) -> Path:
+    out = MODELS_DIR / run
+    out.mkdir(parents=True, exist_ok=True)
+    cohort.save_manifest()
+    train_rows, test_sets, cases = split(config, cohort, jobs)
 
     metrics: dict = {"cases": cases, "rows_train": len(train_rows)}
     forecasters = []
