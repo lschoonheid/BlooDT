@@ -49,7 +49,8 @@ The plan this follows is `Anaesthesia Digital Twin Project Plan.pdf`.
 below. A training run's folder `models/<run>/` holds `models.joblib` (forecasters and suggesters),
 `metrics.json` (all test metrics), `config.json` (the config and cohort it was trained with) and
 `test_cases.json` (the held-out cases); `dte effects` adds `effects.parquet`. The results in
-`docs/results.md` are from run `sixth`.
+`docs/results.md` are from run `sixth` (the fuller pipeline before simplification) and run `lean`
+(today's `configs/default.yaml`, which matches it; see "The simplified pipeline" there).
 
 ## Setup
 
@@ -99,18 +100,18 @@ Each step needs more data and time than the one before.
    uv run dte replay 13 --run smoke
    ```
 
-3. **Full run**, as for `docs/results.md` (1,585 cases; the first build takes hours, mostly PAS;
-   later builds reuse the caches; training ~75 min):
+3. **Full run**, as for `docs/results.md` (1,585 cases; the first build takes roughly an hour on
+   16 cores, mostly PAS; later builds reuse the caches; building ~20 min, training ~30 min):
    ```bash
    uv run dte dataset configs/default.yaml cohorts/tiva-artline.yaml
    uv run dte dataset configs/default.yaml cohorts/tiva-artline.yaml --perturbed
-   uv run dte train configs/default.yaml cohorts/tiva-artline.yaml --run sixth
-   uv run dte replay 17 --run sixth                             # a test patient through the twin
+   uv run dte train configs/default.yaml cohorts/tiva-artline.yaml --run lean
+   uv run dte replay 17 --run lean                             # a test patient through the twin
    uv run dte verify configs/default.yaml cohorts/tiva-artline.yaml   # experts vs pumps and vitals
-   uv run dte effects --run sixth                               # what-ifs vs the clinicians' changes
+   uv run dte effects --run lean                               # what-ifs vs the clinicians' changes
    ```
-   Compare `models/sixth/metrics.json` with the tables in `docs/results.md`; reruns differ by
-   about 0.003 at most (LightGBM threading).
+   Compare `models/lean/metrics.json` with "The simplified pipeline" in `docs/results.md`; reruns
+   differ by about 0.003 at most (LightGBM threading).
 
 4. **Live stack**, see below.
 
@@ -120,7 +121,7 @@ Each step needs more data and time than the one before.
 uv run dte coverage                           # share of cases with each channel
 uv run dte explore map bis hr propofol_dose --by department optype   # largest consistent groups
 uv run dte cohort cohorts/tiva-artline.yaml   # resolve and freeze a cohort's case list
-uv run dte replay 17 --run sixth --out decisions.parquet   # the twin's decisions over a case
+uv run dte replay 17 --run lean --out decisions.parquet   # the twin's decisions over a case
 ```
 
 From raw tracks to decisions, each stage cached per case under `data/derived/`, keyed by its
@@ -146,13 +147,13 @@ Replayer -> Mosquitto (MQTT) -> twin service -> InfluxDB -> Grafana, as in the p
 Message formats are in `live/messages.py`, what the service writes in `live/service.py`.
 
 ```bash
-RUN=sixth docker compose up -d --build        # broker, database, Grafana, twin service with models/sixth
+RUN=lean docker compose up -d --build        # broker, database, Grafana, twin service with models/lean
 docker compose run --rm replayer 17           # replay case 17 at 30x (--speed, --until, --start)
 # Grafana: http://localhost:3000 (admin/admin), dashboard "Anaesthesia twin"; pick the case at the top
 
 # or without Docker for the Python parts (a broker and InfluxDB still needed):
-uv run dte serve --run sixth --host localhost --influx http://localhost:8086
-uv run dte publish 17 --run sixth --speed 30
+uv run dte serve --run lean --host localhost --influx http://localhost:8086
+uv run dte publish 17 --run lean --speed 30
 ```
 
 The dashboard shows each forecast where it comes due, drawn dashed over what was measured; the

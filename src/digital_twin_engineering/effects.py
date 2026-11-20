@@ -32,9 +32,9 @@ from .experts.anesthesim import TCI_DRUGS
 from .patients import covariates
 from .pipeline import MODELS_DIR
 from .suggestion import label_columns
+from .targets import TARGETS
 
-HORIZONS_S = (180, 300, 600)
-SIGNALS = ("bis", "map", "hr")
+MIN_HORIZON_S = 180  # a change comes up to a minute after its decision point: shorter is too early
 
 
 def changes(rows: pd.DataFrame, drugs: dict[str, str]) -> pd.DataFrame:
@@ -60,7 +60,9 @@ def changes(rows: pd.DataFrame, drugs: dict[str, str]) -> pd.DataFrame:
     return out[~same].reset_index(drop=True)
 
 
-def case_effects(caseid: int, config: Config, spec: dict, todo: pd.DataFrame) -> pd.DataFrame:
+def case_effects(
+    caseid: int, config: Config, spec: dict, todo: pd.DataFrame, horizons_s: tuple[int, ...]
+) -> pd.DataFrame:
     """The expert's expected effect of each change in `todo` (one case's rows)."""
     frame = dataset.case_channels(caseid, config)
     runner = experts.Runner(experts.build(spec), covariates(caseid), config.step_s)
@@ -70,7 +72,7 @@ def case_effects(caseid: int, config: Config, spec: dict, todo: pd.DataFrame) ->
     for i, t in enumerate(frame.index.to_numpy()):
         runner.step({n: v[i] for n, v in inputs.items()})
         for _, c in at.get(t, pd.DataFrame()).iterrows():
-            effect = runner.effect(c.drug, c.new, c.current, HORIZONS_S)
+            effect = runner.effect(c.drug, c.new, c.current, horizons_s)
             if effect:
                 out.append({"caseid": caseid, "t": t, "drug": c.drug} | {f"effect.{k}": v for k, v in effect.items()})
         if t >= todo.t.max():
@@ -92,17 +94,23 @@ def run(run_name: str, jobs: int = 16) -> pd.DataFrame:
         rows[f.output] = f.predict(rows)
     todo = changes(rows, config.suggestion.drugs)
     todo = todo[todo.drug.isin(list(TCI_DRUGS)) & (todo.current > 0) & (todo.new > 0)]
-    work = partial(_safe_case_effects, config=config, spec=spec)
+    horizons = tuple(h for h in config.horizons_s if h >= MIN_HORIZON_S)
+    values = [name for name in config.targets if TARGETS[name].kind == "value"]
+    work = partial(_safe_case_effects, config=config, spec=spec, horizons_s=horizons)
     with ProcessPoolExecutor(jobs) as pool:
         parts = list(pool.map(work, [(c, g) for c, g in todo.groupby("caseid")]))
     effects = pd.concat([p for p in parts if p is not None and len(p)], ignore_index=True)
 
     observed = rows[["caseid", "t"]].copy()
-    for s in SIGNALS:
-        for h in HORIZONS_S:
-            observed[f"residual.{s}@{h}"] = rows[f"y.{s}@{h}"] - rows[f"f.{s}@{h}"]
-            observed[f"change.{s}@{h}"] = rows[f"y.{s}@{h}"] - rows[f"x.{s}"]
+    for name in values:
+        for h in horizons:
+            y = rows[f"y.{name}@{h}"]
+            observed[f"residual.{name}@{h}"] = y - rows[f"f.{name}@{h}"]
+            observed[f"change.{name}@{h}"] = y - rows[TARGETS[name].persistence_column]
     after = todo.merge(effects, on=["caseid", "t", "drug"]).merge(observed, on=["caseid", "t"])
+    for name in values:  # the expert's signal for each target (map_1min: its MAP)
+        for h in horizons:
+            after[f"effect.{name}@{h}"] = after[f"effect.{TARGETS[name].channel}@{h}"]
     holds = np.logical_and.reduce([rows[label_columns(d)[0]] == "hold" for d in config.suggestion.drugs])
     quiet = observed[holds].assign(drug="none", direction="hold")
     result = pd.concat([after, quiet], ignore_index=True)
@@ -110,10 +118,10 @@ def run(run_name: str, jobs: int = 16) -> pd.DataFrame:
     return result
 
 
-def _safe_case_effects(item, config, spec) -> pd.DataFrame | None:
+def _safe_case_effects(item, config, spec, horizons_s) -> pd.DataFrame | None:
     caseid, todo = item
     try:
-        return case_effects(caseid, config, spec, todo)
+        return case_effects(caseid, config, spec, todo, horizons_s)
     except Exception as e:
         print(f"case {caseid}: skipped ({type(e).__name__}: {e})", flush=True)
         return None
@@ -122,30 +130,29 @@ def _safe_case_effects(item, config, spec) -> pd.DataFrame | None:
 def summary(result: pd.DataFrame) -> pd.DataFrame:
     """Per drug, direction, signal and horizon: the mean expected effect against the
     mean residual and change, and how well they agree across changes."""
+    pairs = [c.removeprefix("residual.").split("@") for c in result if c.startswith("residual.")]
     rows = []
     for (drug, direction), g in result.groupby(["drug", "direction"]):
-        for s in SIGNALS:
-            for h in HORIZONS_S:
-                r = g[f"residual.{s}@{h}"].to_numpy()
-                row = {
-                    "drug": drug, "direction": direction, "signal": s, "horizon_s": h,
-                    "n": int(np.isfinite(r).sum()),
-                    "residual": np.nanmean(r), "change": np.nanmean(g[f"change.{s}@{h}"]),
-                }
-                if drug != "none":
-                    e = g[f"effect.{s}@{h}"].to_numpy()
-                    row |= {"expected": np.nanmean(e)} | _agreement(e, r)
-                rows.append(row)
+        for s, h in pairs:
+            r = g[f"residual.{s}@{h}"].to_numpy()
+            row = {
+                "drug": drug, "direction": direction, "signal": s, "horizon_s": h,
+                "n": int(np.isfinite(r).sum()),
+                "residual": np.nanmean(r), "change": np.nanmean(g[f"change.{s}@{h}"]),
+            }
+            if drug != "none":
+                e = g[f"effect.{s}@{h}"].to_numpy()
+                row |= {"expected": np.nanmean(e)} | _agreement(e, r)
+            rows.append(row)
     # both directions together: does the size of the effect track?
     for drug, g in result[result.drug != "none"].groupby("drug"):
-        for s in SIGNALS:
-            for h in HORIZONS_S:
-                e, r = g[f"effect.{s}@{h}"].to_numpy(), g[f"residual.{s}@{h}"].to_numpy()
-                rows.append(
-                    {"drug": drug, "direction": "both", "signal": s, "horizon_s": h, "n": int(np.isfinite(e + r).sum()),
-                     "residual": np.nanmean(r), "change": np.nanmean(g[f"change.{s}@{h}"]), "expected": np.nanmean(e)}
-                    | _agreement(e, r)
-                )
+        for s, h in pairs:
+            e, r = g[f"effect.{s}@{h}"].to_numpy(), g[f"residual.{s}@{h}"].to_numpy()
+            rows.append(
+                {"drug": drug, "direction": "both", "signal": s, "horizon_s": h, "n": int(np.isfinite(e + r).sum()),
+                 "residual": np.nanmean(r), "change": np.nanmean(g[f"change.{s}@{h}"]), "expected": np.nanmean(e)}
+                | _agreement(e, r)
+            )
     return pd.DataFrame(rows)
 
 
