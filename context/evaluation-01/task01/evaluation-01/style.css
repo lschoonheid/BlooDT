@@ -1,0 +1,82 @@
+/* ---- Page style of evaluation-01.html (dark theme only) */
+:root {
+  color-scheme: dark;
+  --surface: #17181b; --panel: #222429; --ink: #e9e7e2; --ink2: #b3b0a8; --muted: #8b887f;
+  --rule: #34363c; --s1: #6aa8f0; --s2: #f08a5d; --s3: #3fc795; --s4: #f0b429; --s5: #a597f5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink);
+       font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header, main { max-width: 980px; margin: 0 auto; padding: 0 56px 0 24px; }
+header { padding-top: 28px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+h1 { font-size: 1.7rem; margin: 0 0 4px; }
+h2 { font-size: 1.3rem; margin: 0; display: inline; }
+h3 { font-size: 1.08rem; margin: 0; display: inline; }
+a { color: var(--s1); }
+code, pre { font: 13.5px/1.5 ui-monospace, "JetBrains Mono", Menlo, monospace; }
+code { background: var(--panel); padding: 1px 4px; border-radius: 3px; }
+pre { background: #111215; border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.meta { color: var(--ink2); font-size: .9rem; }
+.small { font-size: .9rem; color: var(--ink2); }
+
+/* foldable sections: <details class="sec"> with the title in <summary> */
+details.sec { border-top: 1px solid var(--rule); padding: 10px 0; }
+details.sec > summary { list-style: none; cursor: pointer; padding: 4px 0; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary > h2::before, details.sec > summary > h3::before {
+  content: "▸"; display: inline-block; width: 1.1em; color: var(--ink2); transition: transform .15s; }
+details.sec[open] > summary > h2::before, details.sec[open] > summary > h3::before { transform: rotate(90deg); }
+details.sec > summary:hover > h2, details.sec > summary:hover > h3 { color: var(--s1); }
+details.sec.sub { margin-left: 18px; border-top: 1px dashed var(--rule); }
+details.sec > summary .hint { color: var(--muted); font-size: .85rem; margin-left: 8px; }
+
+/* small fold boxes inside a section */
+details.fold { border-left: 3px solid var(--s5); background: #232038; border-radius: 4px; padding: 4px 12px; margin: 10px 0; }
+details.fold > summary { cursor: pointer; color: var(--ink2); }
+details.fold > summary .tag { font-weight: 600; color: var(--s5); margin-right: 8px; }
+details.fold.code { border-color: #8a9bb3; background: #1f252e; }
+details.fold.code > summary .tag { color: #a9b8cc; }
+
+/* boxes */
+div.box { background: #1b2635; border-left: 3px solid var(--s1); border-radius: 4px; padding: 8px 12px; margin: 12px 0; }
+div.box.take { background: #18302a; border-color: var(--s3); }
+div.box.warn { background: #34221a; border-color: var(--s2); }
+div.box > p:first-child { margin-top: 0; } div.box > p:last-child { margin-bottom: 0; }
+
+/* tables */
+table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .93rem; }
+th, td { border-bottom: 1px solid var(--rule); padding: 5px 8px; text-align: left; vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; background: var(--panel); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.modtab td:nth-child(3) { color: var(--ink2); }
+
+/* figures: inline SVG diagrams */
+figure { margin: 14px 0; }
+figure svg { width: 100%; height: auto; display: block; background: #1a1b1f; border: 1px solid var(--rule); border-radius: 6px; }
+figcaption { color: var(--ink2); font-size: .88rem; margin-top: 4px; }
+svg text { fill: var(--ink); font: 13px system-ui, sans-serif; }
+svg text.sm { font-size: 11px; fill: var(--ink2); }
+svg text.hd { font-weight: 600; }
+svg .b-data  { fill: #1b2635; stroke: #6aa8f0; }
+svg .b-sig   { fill: #18302a; stroke: #3fc795; }
+svg .b-model { fill: #2e2817; stroke: #f0b429; }
+svg .b-learn { fill: #232038; stroke: #a597f5; }
+svg .b-live  { fill: #361f20; stroke: #f06b6a; }
+svg .b-cli   { fill: #222429; stroke: #8b919c; }
+svg .b-out   { fill: #15302f; stroke: #3cb8b8; }
+svg rect { stroke-width: 1.4; }
+svg .arrow { stroke: var(--ink2); stroke-width: 1.4; fill: none; }  /* each figure sets its own marker-end */
+svg .arrow.dash { stroke-dasharray: 5 4; }
+
+/* table of contents */
+nav.toc { background: var(--panel); border-radius: 6px; padding: 10px 16px; margin: 16px 0; }
+nav.toc ol { margin: 4px 0; }
+.toc-buttons { margin-top: 6px; font-size: .9rem; }
+.toc-buttons button { font: inherit; padding: 2px 10px; border: 1px solid var(--rule); border-radius: 4px;
+                      background: var(--surface); color: var(--ink); cursor: pointer; margin-right: 4px; }
+.toc-buttons button:hover { border-color: var(--ink2); }
+
+/* colour legend of the layers */
+.legend span { display: inline-block; margin-right: 12px; font-size: .88rem; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; border: 1px solid; }

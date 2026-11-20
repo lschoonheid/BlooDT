@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluation 01 · Task 01 – Architecture of the anaesthesia digital twin (BlooDT)</title>
+<!--
+  Source of evaluation-01.html. Do not edit evaluation-01.html: edit this file, then run
+    python3 context/evaluation-01/task01/evaluation-01/build.py
+  Placeholders (in double curly braces): INLINE:<file> (CSS, JS, marker JSON), MODULE_TABLE,
+  SOURCE_COMMIT, BUILD_DATE, TOTAL_LINES.
+  Layout: one sentence per line. Each section is <details class="sec"> with <h2 id> in <summary>.
+  The marker tool needs this: it uses the ids of the sections in the keys of the marks.
+-->
+<style>
+{{INLINE:style.css}}
+{{INLINE:marks.css}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Architecture of the anaesthesia digital twin</h1>
+  <p class="meta">Evaluation 01 · Task 01 · repository <code>BlooDT</code>, branch <code>tai/evaluation-01</code>, commit <code>{{SOURCE_COMMIT}}</code> · built {{BUILD_DATE}}</p>
+  <p class="small">This report helps you to understand the architecture of the project.
+     It describes the layers, the data flow, the main ideas and the extension points.
+     It does not change the code.</p>
+  <p class="small"><b>Study marks.</b> Click ⚑ at the right of a paragraph, list item, code block or table row to mark it.
+     Or select words, then click “Mark selection”.
+     Use the levels Struggle, Unsure and Got it, and write a note if necessary.
+     The “Marks” button at the bottom right shows all marks.
+     “Focus” dims all unmarked content.
+     Press <b>Ctrl+S</b> (Mac: ⌘S) to export the marks.
+     Save the file as <code>context/evaluation-01/task01/evaluation-01-markers.json</code>.
+     In Chrome or Edge, click “Link evaluation-01-markers.json…” in the Marks panel once.
+     Then the page reads that file at each load, and Ctrl+S writes to it.</p>
+  <p class="small">Style of the text: ASD-STE100 (Simplified Technical English).
+     Module, class and function names are technical names.</p>
+</header>
+
+<main>
+<nav class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#s-summary">Summary</a></li>
+    <li><a href="#s-goal">Goal and scope of the twin</a></li>
+    <li><a href="#s-repo">Repository layout</a></li>
+    <li><a href="#s-layers">Layers of the code</a></li>
+    <li><a href="#s-offline">Offline pipeline: from a case to a model</a></li>
+    <li><a href="#s-ideas">Key ideas in the code</a></li>
+    <li><a href="#s-cache">Stage cache</a></li>
+    <li><a href="#s-learn">Models, split and evaluation</a></li>
+    <li><a href="#s-live">Live twin</a></li>
+    <li><a href="#s-config">Configuration files</a></li>
+    <li><a href="#s-modules">Module table (generated)</a></li>
+    <li><a href="#s-tests">Tests</a></li>
+    <li><a href="#s-adr">Design decisions (ADRs)</a></li>
+    <li><a href="#s-results">Results at a glance</a></li>
+    <li><a href="#s-extend">How to extend the project</a></li>
+    <li><a href="#s-gaps">Open items and observations</a></li>
+    <li><a href="#s-read">Suggested order to read the code</a></li>
+    <li><a href="#s-process">Discussion process and decisions</a></li>
+    <li><a href="#s-artifacts">Location of the artifacts</a></li>
+  </ol>
+  <div class="toc-buttons">Sections: <button id="open-all" type="button">Open all</button><button id="close-all" type="button">Close all</button>
+  <span class="small">Click the title of a section to open or close it.</span></div>
+</nav>
+
+<!-- ====================================================================== -->
+<details class="sec" open>
+  <summary><h2 id="s-summary">1 &nbsp;Summary</h2></summary>
+  <div class="box take">
+    <p>The project is a digital shadow of one patient under total intravenous anaesthesia (TIVA).
+    It replays real VitalDB cases.
+    It estimates drug concentrations that a monitor cannot show.
+    It forecasts MAP, BIS and HR, and it warns of hypotension.
+    It also suggests a change of the propofol or remifentanil target to the clinician.</p>
+  </div>
+  <p>The code is one Python package, <code>src/digital_twin_engineering</code>, with about {{TOTAL_LINES}} lines.
+  One command line tool, <code>dte</code>, runs all steps.</p>
+  <p>The architecture has three parts:</p>
+  <ol>
+    <li><b>Offline pipeline.</b> It reads VitalDB cases, puts the signals on a causal 1 s grid, runs mechanistic expert models, and makes one row per decision point.
+    Then it trains LightGBM forecasters and suggesters and evaluates them against simple baselines.</li>
+    <li><b>Stage cache.</b> Each stage writes its result per case to <code>data/derived/&lt;stage&gt;/&lt;config hash&gt;/</code>.
+    A change of the configuration computes only the stages that the change touches.</li>
+    <li><b>Live twin.</b> The class <code>live.twin.Twin</code> receives raw records one by one.
+    It uses the same functions as the offline pipeline, so it sees the same features.
+    The MQTT, InfluxDB and Grafana services are only an outline at this time.</li>
+  </ol>
+  <p>The main rule of the design is <b>causality</b>: a feature at time <i>t</i> uses only data that was known at time <i>t</i>.
+  Many parts of the code exist for this rule: the grid with staleness, the dose counter, the pre-dose baseline and the test that compares the live twin with the offline grid.</p>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-goal">2 &nbsp;Goal and scope of the twin</h2></summary>
+  <p>Source: <code>Anaesthesia Digital Twin Project Plan.pdf</code> (12 Nov 2026), <code>README.md</code> and <code>GLOSSARY.md</code>.</p>
+  <ul>
+    <li>The anaesthetist keeps the patient unconscious (BIS 40 to 60) with propofol and remifentanil.</li>
+    <li>These drugs also decrease the blood pressure. MAP below 65 mmHg is related to organ damage after surgery.</li>
+    <li>The twin is a <b>digital shadow</b>: its advice goes to a person, not back to the pumps.</li>
+    <li>The data is VitalDB: 6,388 surgical cases with monitor, BIS and infusion pump tracks.</li>
+    <li>The plan gives these priorities. Must: replay → MQTT → twin → InfluxDB → Grafana, drug model with BIS prediction, hypotension warning 5 min ahead, fidelity panel. Should: online calibration, several rooms. Could: what-if panel, ML correction of the drug model.</li>
+  </ul>
+  <details class="fold"><summary><span class="tag">Glossary</span>Words that the code uses with a special meaning</summary>
+    <table>
+      <thead><tr><th>Term</th><th>Meaning in this project</th></tr></thead>
+      <tbody>
+        <tr><td>Patient / case</td><td>A patient (<code>subjectid</code>) can have several cases. A case (<code>caseid</code>) is one recorded operation.</td></tr>
+        <tr><td>Track</td><td>One time series of one device, for example <code>Solar8000/ART_MBP</code>.</td></tr>
+        <tr><td>Channel</td><td>A logical signal in a canonical unit, for example <code>map</code>. The first available track of its list supplies it.</td></tr>
+        <tr><td>Staleness</td><td>The number of seconds since the last observation of a channel.</td></tr>
+        <tr><td>Expert model</td><td>A mechanistic PK/PD model (PAS or AnestheSIM). Its outputs are inputs to the forecaster. It is not a “mixture of experts”.</td></tr>
+        <tr><td>Expert lookahead / what-if</td><td>The forecast of an expert if the current rates stay the same / if one TCI target changes.</td></tr>
+        <tr><td>Decision point</td><td>A time at which the twin makes forecasts and suggestions (every 30 s in the default configuration).</td></tr>
+        <tr><td>Target / horizon</td><td>What a forecaster predicts / how far ahead.</td></tr>
+        <tr><td>Hypotension event</td><td>MAP below 65 mmHg for 1 min or more.</td></tr>
+        <tr><td>Onset</td><td>A decision point where MAP is not already below 65 mmHg.</td></tr>
+        <tr><td>Intervention</td><td>A sustained change of a pump setting by the clinician (the TCI target, not the rate).</td></tr>
+        <tr><td>Intervention suggestion</td><td>The typical change that a clinician makes now, with its probability. It copies practice. It does not claim to be optimal.</td></tr>
+      </tbody>
+    </table>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-repo">3 &nbsp;Repository layout</h2></summary>
+  <table>
+    <thead><tr><th>Path</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td><code>src/digital_twin_engineering/</code></td><td>The package. All code of the pipeline and the twin.</td></tr>
+      <tr><td><code>src/.../experts/</code></td><td>Mechanistic models: PAS wrapper, AnestheSIM port, pre-dose baseline, the <code>Runner</code>.</td></tr>
+      <tr><td><code>src/.../live/</code></td><td>The live twin and the in-process replayer.</td></tr>
+      <tr><td><code>configs/</code></td><td>Pipeline configurations: <code>default.yaml</code> (full run), <code>smoke.yaml</code> (30 s check).</td></tr>
+      <tr><td><code>cohorts/</code></td><td>Cohort definitions: <code>tiva-artline.yaml</code> (1,585 cases), <code>smoke.yaml</code> (about 12 cases).</td></tr>
+      <tr><td><code>docs/adr/</code></td><td>Four architecture decision records.</td></tr>
+      <tr><td><code>docs/results.md</code></td><td>Metrics of the run <code>fourth</code> and of the ablation.</td></tr>
+      <tr><td><code>tests/</code></td><td>pytest tests for channels, labels, experts, AnestheSIM, suggestion and the live twin.</td></tr>
+      <tr><td><code>GLOSSARY.md</code></td><td>The project words (see section 2).</td></tr>
+      <tr><td><code>docker-compose.yml</code></td><td>Outline of the live stack: Mosquitto, InfluxDB, Grafana.</td></tr>
+      <tr><td><code>download_vitaldb_daemon.sh</code></td><td>Downloads all of VitalDB (about 95 GB) as a systemd user service.</td></tr>
+      <tr><td><code>pyproject.toml</code>, <code>uv.lock</code></td><td>Python ≥ 3.14, uv. Two scripts: <code>dte</code> and <code>vitaldb-cache</code>. PAS comes from a git commit.</td></tr>
+      <tr><td><code>data/</code> (not in git)</td><td><code>data/vitaldb/</code>: local mirror of PhysioNet VitalDB. <code>data/derived/</code>: stage cache.</td></tr>
+      <tr><td><code>models/</code> (not in git)</td><td>One folder per training run: <code>models.joblib</code>, <code>metrics.json</code>, <code>config.json</code>, <code>test_cases.json</code>.</td></tr>
+    </tbody>
+  </table>
+  <div class="box warn"><p>On this machine, <code>data/</code> and <code>models/</code> do not exist.
+  This report did not run the pipeline. All numbers come from <code>docs/results.md</code>.</p></div>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-layers">4 &nbsp;Layers of the code</h2></summary>
+  <p>The figure shows the modules in layers.
+  A layer uses mostly the layers above it.
+  Exception: <code>config.py</code> reads <code>channels</code> and <code>experts</code> to find all the channels that the experts need.</p>
+  <p class="legend">
+    <span><i style="background:#8b919c;border-color:#8b919c"></i>entry points</span>
+    <span><i style="background:#6aa8f0;border-color:#6aa8f0"></i>data access</span>
+    <span><i style="background:#3fc795;border-color:#3fc795"></i>signals and case sets</span>
+    <span><i style="background:#f0b429;border-color:#f0b429"></i>experts and labels</span>
+    <span><i style="background:#a597f5;border-color:#a597f5"></i>rows and learning</span>
+    <span><i style="background:#f06b6a;border-color:#f06b6a"></i>live</span>
+  </p>
+  <figure>
+    <svg viewBox="0 0 920 480" role="img" aria-label="Layers of the package">
+      <!-- row labels -->
+      <text x="12" y="47"  class="hd">Entry points</text>
+      <text x="12" y="113" class="hd">Foundation</text>
+      <text x="12" y="179" class="hd">Signals, case sets</text>
+      <text x="12" y="245" class="hd">Experts, labels</text>
+      <text x="12" y="311" class="hd">Rows</text>
+      <text x="12" y="377" class="hd">Learning, evaluation</text>
+      <text x="12" y="443" class="hd">Live</text>
+
+      <!-- row 0: entry points (2 boxes, w 360) -->
+      <rect class="b-cli" x="170" y="18"  width="360" height="50" rx="5"/>
+      <text x="350" y="39" text-anchor="middle" class="hd">cli.py → dte</text>
+      <text x="350" y="57" text-anchor="middle" class="sm">9 sub-commands: inventory, cohort, verify, train, replay …</text>
+      <rect class="b-cli" x="540" y="18"  width="360" height="50" rx="5"/>
+      <text x="720" y="39" text-anchor="middle" class="hd">vitaldb_cache.main → vitaldb-cache</text>
+      <text x="720" y="57" text-anchor="middle" class="sm">download the dataset, check SHA256</text>
+
+      <!-- row 1: foundation (4 boxes, w 175) -->
+      <rect class="b-data" x="170" y="84" width="175" height="50" rx="5"/>
+      <text x="257" y="105" text-anchor="middle" class="hd">vitaldb_cache</text>
+      <text x="257" y="123" text-anchor="middle" class="sm">local VitalDB mirror</text>
+      <rect class="b-data" x="355" y="84" width="175" height="50" rx="5"/>
+      <text x="442" y="105" text-anchor="middle" class="hd">patients</text>
+      <text x="442" y="123" text-anchor="middle" class="sm">clinical_data, covariates</text>
+      <rect class="b-data" x="540" y="84" width="175" height="50" rx="5"/>
+      <text x="627" y="105" text-anchor="middle" class="hd">stages</text>
+      <text x="627" y="123" text-anchor="middle" class="sm">per-case cache, config hash</text>
+      <rect class="b-data" x="725" y="84" width="175" height="50" rx="5"/>
+      <text x="812" y="105" text-anchor="middle" class="hd">config</text>
+      <text x="812" y="123" text-anchor="middle" class="sm">YAML → Config, cache keys</text>
+
+      <!-- row 2: signals and case sets (3 boxes, w 236) -->
+      <rect class="b-sig" x="170" y="150" width="236" height="50" rx="5"/>
+      <text x="288" y="171" text-anchor="middle" class="hd">channels</text>
+      <text x="288" y="189" text-anchor="middle" class="sm">tracks → 1 s grid + staleness, DoseCounter</text>
+      <rect class="b-sig" x="416" y="150" width="236" height="50" rx="5"/>
+      <text x="534" y="171" text-anchor="middle" class="hd">inventory</text>
+      <text x="534" y="189" text-anchor="middle" class="sm">tracks and drugs given, per case</text>
+      <rect class="b-sig" x="662" y="150" width="236" height="50" rx="5"/>
+      <text x="780" y="171" text-anchor="middle" class="hd">cohort</text>
+      <text x="780" y="189" text-anchor="middle" class="sm">YAML criteria → frozen case list</text>
+
+      <!-- row 3: experts and labels (6 boxes, w 113) -->
+      <rect class="b-model" x="170" y="216" width="113" height="50" rx="5"/>
+      <text x="226" y="237" text-anchor="middle" class="hd">experts</text>
+      <text x="226" y="255" text-anchor="middle" class="sm">Runner, run</text>
+      <rect class="b-model" x="293" y="216" width="113" height="50" rx="5"/>
+      <text x="349" y="237" text-anchor="middle" class="hd">experts.pas</text>
+      <text x="349" y="255" text-anchor="middle" class="sm">PAS wrapper</text>
+      <rect class="b-model" x="416" y="216" width="113" height="50" rx="5"/>
+      <text x="472" y="237" text-anchor="middle" class="hd">…anesthesim</text>
+      <text x="472" y="255" text-anchor="middle" class="sm">port, TCI, what-if</text>
+      <rect class="b-model" x="539" y="216" width="113" height="50" rx="5"/>
+      <text x="595" y="237" text-anchor="middle" class="hd">…baseline</text>
+      <text x="595" y="255" text-anchor="middle" class="sm">pre-dose MAP, HR</text>
+      <rect class="b-model" x="662" y="216" width="113" height="50" rx="5"/>
+      <text x="718" y="237" text-anchor="middle" class="hd">labels</text>
+      <text x="718" y="255" text-anchor="middle" class="sm">hypotension, interv.</text>
+      <rect class="b-model" x="785" y="216" width="113" height="50" rx="5"/>
+      <text x="841" y="237" text-anchor="middle" class="hd">targets</text>
+      <text x="841" y="255" text-anchor="middle" class="sm">y.&lt;target&gt;@&lt;h&gt;</text>
+
+      <!-- row 4: rows (2 boxes, w 360) -->
+      <rect class="b-learn" x="170" y="282" width="360" height="50" rx="5"/>
+      <text x="350" y="303" text-anchor="middle" class="hd">features</text>
+      <text x="350" y="321" text-anchor="middle" class="sm">look-back windows → x.* columns (offline and live)</text>
+      <rect class="b-learn" x="540" y="282" width="360" height="50" rx="5"/>
+      <text x="720" y="303" text-anchor="middle" class="hd">dataset</text>
+      <text x="720" y="321" text-anchor="middle" class="sm">case frame → decision-point rows (cached)</text>
+
+      <!-- row 5: learning and evaluation (7 boxes, w 95) -->
+      <rect class="b-learn" x="170" y="348" width="95" height="50" rx="5"/>
+      <text x="217" y="369" text-anchor="middle" class="hd">splits</text>
+      <text x="217" y="387" text-anchor="middle" class="sm">by patient</text>
+      <rect class="b-learn" x="275" y="348" width="95" height="50" rx="5"/>
+      <text x="322" y="369" text-anchor="middle" class="hd">forecasting</text>
+      <text x="322" y="387" text-anchor="middle" class="sm">LightGBM, OOF</text>
+      <rect class="b-learn" x="380" y="348" width="95" height="50" rx="5"/>
+      <text x="427" y="369" text-anchor="middle" class="hd">suggestion</text>
+      <text x="427" y="387" text-anchor="middle" class="sm">per drug</text>
+      <rect class="b-learn" x="485" y="348" width="95" height="50" rx="5"/>
+      <text x="532" y="369" text-anchor="middle" class="hd">pipeline</text>
+      <text x="532" y="387" text-anchor="middle" class="sm">dte train</text>
+      <rect class="b-learn" x="590" y="348" width="95" height="50" rx="5"/>
+      <text x="637" y="369" text-anchor="middle" class="hd">evaluation</text>
+      <text x="637" y="387" text-anchor="middle" class="sm">vs baselines</text>
+      <rect class="b-learn" x="695" y="348" width="95" height="50" rx="5"/>
+      <text x="742" y="369" text-anchor="middle" class="hd">ablation</text>
+      <text x="742" y="387" text-anchor="middle" class="sm">dte ablate</text>
+      <rect class="b-learn" x="800" y="348" width="98" height="50" rx="5"/>
+      <text x="849" y="369" text-anchor="middle" class="hd">verification</text>
+      <text x="849" y="387" text-anchor="middle" class="sm">dte verify</text>
+
+      <!-- row 6: live (3 boxes, w 236) -->
+      <rect class="b-live" x="170" y="414" width="236" height="50" rx="5"/>
+      <text x="288" y="435" text-anchor="middle" class="hd">live.twin.Twin</text>
+      <text x="288" y="453" text-anchor="middle" class="sm">observe → tick → decide</text>
+      <rect class="b-live" x="416" y="414" width="236" height="50" rx="5"/>
+      <text x="534" y="435" text-anchor="middle" class="hd">live.replayer</text>
+      <text x="534" y="453" text-anchor="middle" class="sm">dte replay (in process); MQTT: TODO</text>
+      <rect class="b-live" x="662" y="414" width="236" height="50" rx="5" stroke-dasharray="5 4"/>
+      <text x="780" y="435" text-anchor="middle" class="hd">docker-compose.yml</text>
+      <text x="780" y="453" text-anchor="middle" class="sm">Mosquitto, InfluxDB, Grafana (outline)</text>
+    </svg>
+    <figcaption>Figure 1. Modules of <code>src/digital_twin_engineering</code> in layers. A dashed border shows a part that is only an outline.
+    Section 11 lists the real imports of each module.</figcaption>
+  </figure>
+  <details class="fold"><summary><span class="tag">Detail</span>What each layer does</summary>
+    <ul>
+      <li><b>Entry points.</b> <code>cli.py</code> parses the sub-command and calls one function of a lower module. It has no logic of its own.</li>
+      <li><b>Foundation.</b> <code>vitaldb_cache</code> downloads PhysioNet files on first use and checks them with <code>SHA256SUMS.txt</code>. <code>patients</code> reads <code>clinical_data</code> (age, sex, height, weight, BMI, ASA). <code>stages</code> keeps per-case results on disk. <code>config</code> turns a YAML file into a frozen <code>Config</code> dataclass and makes the cache keys.</li>
+      <li><b>Signals and case sets.</b> <code>channels</code> defines 23 channels and the causal grid. <code>inventory</code> scans all cases once. <code>cohort</code> selects cases from YAML criteria.</li>
+      <li><b>Experts and labels.</b> The expert models step through a case one second at a time. <code>labels</code> and <code>targets</code> look at the full case (also the future), so they make only training labels.</li>
+      <li><b>Rows.</b> <code>features</code> makes the forecaster inputs with look-back windows. <code>dataset</code> joins everything into one row per decision point.</li>
+      <li><b>Learning and evaluation.</b> Forecasters, suggesters, the patient split, the metrics, the ablation and the expert fidelity check.</li>
+      <li><b>Live.</b> The twin and a replayer. They reuse the modules above without change.</li>
+    </ul>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-offline">5 &nbsp;Offline pipeline: from a case to a model</h2></summary>
+  <p>The commands below are from <code>README.md</code>. Run them in this order.</p>
+<pre><code>uv run dte inventory                         # once: tracks and drugs given per case (~12 min)
+uv run dte coverage                          # share of cases with each channel
+uv run dte explore map bis hr propofol_dose --by department optype
+uv run dte cohort cohorts/tiva-artline.yaml  # freeze the case list
+uv run dte verify configs/default.yaml cohorts/smoke.yaml
+uv run dte train  configs/default.yaml cohorts/tiva-artline.yaml --run first
+uv run dte ablate configs/default.yaml cohorts/tiva-artline.yaml --run ablation
+uv run dte replay 13 --run smoke             # one case through the live twin</code></pre>
+  <figure>
+    <svg viewBox="0 0 920 420" role="img" aria-label="Offline data flow">
+      <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3b0a8"/></marker></defs>
+      <style>#f2 .arrow { marker-end: url(#ah2); }</style>
+      <g id="f2">
+      <!-- row A -->
+      <rect class="b-data" x="20"  y="20" width="190" height="84" rx="5"/>
+      <text x="115" y="44" text-anchor="middle" class="hd">VitalDB cache</text>
+      <text x="115" y="64" text-anchor="middle" class="sm">data/vitaldb/*.vital</text>
+      <text x="115" y="80" text-anchor="middle" class="sm">clinical_data</text>
+      <rect class="b-sig" x="250" y="20" width="190" height="84" rx="5"/>
+      <text x="345" y="44" text-anchor="middle" class="hd">channels.load_channels</text>
+      <text x="345" y="64" text-anchor="middle" class="sm">1 s grid, last value + staleness</text>
+      <text x="345" y="80" text-anchor="middle" class="sm">cache: derived/channels/</text>
+      <rect class="b-model" x="480" y="20" width="190" height="84" rx="5"/>
+      <text x="575" y="44" text-anchor="middle" class="hd">experts.run</text>
+      <text x="575" y="64" text-anchor="middle" class="sm">5 experts, signals, lookaheads</text>
+      <text x="575" y="80" text-anchor="middle" class="sm">cache: derived/experts/ (each)</text>
+      <rect class="b-learn" x="710" y="20" width="190" height="84" rx="5"/>
+      <text x="805" y="44" text-anchor="middle" class="hd">dataset.case_frame</text>
+      <text x="805" y="64" text-anchor="middle" class="sm">channels ⨝ expert signals</text>
+      <text x="805" y="80" text-anchor="middle" class="sm">(1 row per second)</text>
+      <path class="arrow" d="M210,62 L248,62"/>
+      <path class="arrow" d="M440,62 L478,62"/>
+      <path class="arrow" d="M670,62 L708,62"/>
+      <path class="arrow" d="M805,104 L805,124 L115,124 L115,148"/>
+
+      <!-- row B -->
+      <rect class="b-learn" x="20"  y="150" width="190" height="84" rx="5"/>
+      <text x="115" y="174" text-anchor="middle" class="hd">decision_points</text>
+      <text x="115" y="194" text-anchor="middle" class="sm">every 30 s, from anaesthesia</text>
+      <text x="115" y="210" text-anchor="middle" class="sm">start to end</text>
+      <rect class="b-learn" x="250" y="150" width="190" height="84" rx="5"/>
+      <text x="345" y="174" text-anchor="middle" class="hd">features → x.*</text>
+      <text x="345" y="194" text-anchor="middle" class="sm">windows 60/300/900/1800 s</text>
+      <text x="345" y="210" text-anchor="middle" class="sm">+ covariates + phase</text>
+      <rect class="b-model" x="480" y="150" width="190" height="84" rx="5"/>
+      <text x="575" y="174" text-anchor="middle" class="hd">labels → y.*</text>
+      <text x="575" y="194" text-anchor="middle" class="sm">y.map@300, y.hypotension@60 …</text>
+      <text x="575" y="210" text-anchor="middle" class="sm">y.suggest.&lt;drug&gt;.direction/new</text>
+      <rect class="b-learn" x="710" y="150" width="190" height="84" rx="5"/>
+      <text x="805" y="174" text-anchor="middle" class="hd">dataset.case_rows</text>
+      <text x="805" y="194" text-anchor="middle" class="sm">clean and perturbed rows</text>
+      <text x="805" y="210" text-anchor="middle" class="sm">cache: derived/rows/</text>
+      <path class="arrow" d="M210,192 L248,192"/>
+      <path class="arrow" d="M440,192 L478,192"/>
+      <path class="arrow" d="M670,192 L708,192"/>
+      <path class="arrow" d="M805,234 L805,254 L115,254 L115,278"/>
+
+      <!-- row C -->
+      <rect class="b-learn" x="20"  y="280" width="190" height="84" rx="5"/>
+      <text x="115" y="304" text-anchor="middle" class="hd">pipeline.split</text>
+      <text x="115" y="324" text-anchor="middle" class="sm">80/20 by patient</text>
+      <text x="115" y="340" text-anchor="middle" class="sm">½ train patients perturbed</text>
+      <rect class="b-learn" x="250" y="280" width="190" height="84" rx="5"/>
+      <text x="345" y="304" text-anchor="middle" class="hd">forecasting</text>
+      <text x="345" y="324" text-anchor="middle" class="sm">1 LightGBM per (target, h)</text>
+      <text x="345" y="340" text-anchor="middle" class="sm">out-of-fold → f.* columns</text>
+      <rect class="b-learn" x="480" y="280" width="190" height="84" rx="5"/>
+      <text x="575" y="304" text-anchor="middle" class="hd">suggestion</text>
+      <text x="575" y="324" text-anchor="middle" class="sm">per drug: classifier (3 classes)</text>
+      <text x="575" y="340" text-anchor="middle" class="sm">+ 2 regressors (new setting)</text>
+      <rect class="b-out" x="710" y="280" width="190" height="84" rx="5"/>
+      <text x="805" y="304" text-anchor="middle" class="hd">evaluation → models/&lt;run&gt;/</text>
+      <text x="805" y="324" text-anchor="middle" class="sm">metrics.json, models.joblib</text>
+      <text x="805" y="340" text-anchor="middle" class="sm">config.json, test_cases.json</text>
+      <path class="arrow" d="M210,322 L248,322"/>
+      <path class="arrow" d="M440,322 L478,322"/>
+      <path class="arrow" d="M670,322 L708,322"/>
+      <text x="20" y="400" class="sm">Order of the code: pipeline.train → dataset.build (process pool, 16 jobs) → case_rows → case_frame → case_channels / expert_signals → stages.cached.</text>
+      </g>
+    </svg>
+    <figcaption>Figure 2. Data flow of <code>dte train</code>. The first two rows run per case and in parallel. The third row runs on all rows together.</figcaption>
+  </figure>
+
+  <details class="sec sub">
+    <summary><h3 id="s-offline-rows">5.1 &nbsp;Columns of one row</h3></summary>
+    <p>One row is one decision point of one case. The prefix of a column name tells its role.</p>
+    <table>
+      <thead><tr><th>Prefix</th><th>Role</th><th>Examples</th></tr></thead>
+      <tbody>
+        <tr><td>(none)</td><td>Identity</td><td><code>caseid</code>, <code>subjectid</code>, <code>t</code></td></tr>
+        <tr><td><code>x.</code></td><td>Forecaster input. It uses only the past.</td><td><code>x.map</code>, <code>x.map.mean300</code>, <code>x.bis__staleness</code>, <code>x.asim_greco.bis@300</code>, <code>x.age</code>, <code>x.surgery</code></td></tr>
+        <tr><td><code>y.</code></td><td>Label. It uses the future. Never an input.</td><td><code>y.map@300</code>, <code>y.hypotension@600</code>, <code>y.suggest.propofol.direction</code></td></tr>
+        <tr><td><code>f.</code></td><td>Forecast of a trained forecaster. Input to the suggesters.</td><td><code>f.map@300</code>, <code>f.hypotension@300</code></td></tr>
+      </tbody>
+    </table>
+    <p>The default configuration gives about 733 <code>x.</code> columns (see the ablation table in <code>docs/results.md</code>).</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-offline-perturb">5.2 &nbsp;Clean rows and perturbed rows</h3></summary>
+    <p><code>dataset.case_rows(perturbed=True)</code> takes the features from a frame with simulated sensor faults.
+    It takes the labels from the clean frame.</p>
+    <p>The faults are in <code>channels.Perturbation</code>: an extra delay of 0 to 10 s per channel and about 4 dropouts per hour of about 30 s.
+    They apply only to “level” channels (vitals), not to pump settings or doses.</p>
+    <p>The seed of a fault depends on the case and the channel name only.
+    So the same channel gets the same fault, also when other channels change.</p>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-ideas">6 &nbsp;Key ideas in the code</h2></summary>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-grid">6.1 &nbsp;Causal grid with staleness (<code>channels.py</code>)</h3></summary>
+    <ul>
+      <li>A <code>Channel</code> has a name, a kind (<code>level</code>, <code>setting</code> or <code>dose</code>), a unit, a list of candidate tracks with a unit factor, a valid range and a maximum staleness.</li>
+      <li><code>resolve</code> selects the first candidate track that the case has.</li>
+      <li><code>to_grid</code> puts the raw records on the 1 s grid. Each cell holds the last value at or before that second. The code never interpolates.</li>
+      <li>Each channel gets a second column <code>&lt;channel&gt;__staleness</code>: seconds since the observation.</li>
+      <li>Values outside the valid range are removed first. Thus an artefact shows as a growing staleness.</li>
+      <li>When the staleness is more than <code>max_staleness_s</code> (300 s for most vitals), the value becomes NaN.</li>
+    </ul>
+    <p>Why: interpolation uses the next observation, so it leaks the future. It also hides gaps that the live twin will see. (ADR 0002.)</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-dose">6.2 &nbsp;Dose counter (<code>channels.DoseCounter</code>)</h3></summary>
+    <p>A pump records a cumulative volume (<code>*_VOL</code>, mL). The raw data has three problems:</p>
+    <ol>
+      <li>Small decreases of about 0.2 mL (jitter).</li>
+      <li>Resets when a syringe or pump restarts, not always to zero.</li>
+      <li>Single wild values, for example 249037.83 mL between two values near 13 mL.</li>
+    </ol>
+    <p>The counter accepts a rise only if a pump can deliver it (maximum 1200 mL/h).
+    It ignores small decreases.
+    It keeps a large jump as “pending” until 5 more readings arrive.
+    If the jump stays, the counter starts again from the new level (a re-base). If not, it ignores the jump.</p>
+    <p>Consequence: after a jump, the dose total becomes known up to 5 readings late.
+    The grid uses the time when the value became known, not the time of the reading.
+    The live twin uses the same counter, so offline and live agree.</p>
+    <p>On the grid, a dose channel holds the amount for each step (difference of the total), in mg or µg.</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-experts">6.3 &nbsp;Expert models (<code>experts/</code>)</h3></summary>
+    <p>An expert follows the protocol <code>Expert</code>: <code>name</code>, <code>inputs</code>, <code>signals</code>, <code>reset(covariates, step_s)</code>, <code>step(inputs)</code>.
+    <code>experts.build(spec)</code> makes an expert from a dictionary of the YAML file. The key <code>kind</code> selects the class.</p>
+    <table>
+      <thead><tr><th>Kind</th><th>Class</th><th>Models</th><th>Signals</th><th>Lookahead</th></tr></thead>
+      <tbody>
+        <tr><td><code>pas</code></td><td><code>PasExpert</code></td><td>Python Anesthesia Simulator: Marsh_modified / Schnider / Eleveld propofol, Minto / Eleveld remifentanil, Bouillon / Eleveld BIS, VitalDB haemodynamics</td><td>propofol_ce, remifentanil_ce, bis, map, hr, co</td><td>No (too slow)</td></tr>
+        <tr><td><code>anesthesim</code></td><td><code>AnestheSimExpert</code></td><td>Port of AnestheSIM 1.0.0 (MATLAB): Schnider, Minto, Joachim norepinephrine, volatile effect sites; BIS surface greco/bouillon/minto; MAP separable or unified</td><td>Cp and Ce of each drug, volatile MAC, bis, map, hr</td><td>Yes, and what-if</td></tr>
+      </tbody>
+    </table>
+    <ul>
+      <li><code>Runner</code> drives one expert one step at a time. It sets a missing dose to 0. The offline <code>experts.run</code> and the live twin use the same <code>Runner</code>.</li>
+      <li>With <code>baseline: pre_dose</code>, the expert takes the resting MAP and HR from the median of the observations before the first dose (<code>experts/baseline.py</code>). MAP comes from the cuff (NIBP), because the arterial line is often not ready before induction.</li>
+      <li>The AnestheSIM port uses an exact zero-order-hold matrix step (<code>scipy.linalg.expm</code>) in place of an ODE solver. This makes it fast.</li>
+    </ul>
+    <details class="fold"><summary><span class="tag">Detail</span>Lookahead and what-if</summary>
+      <ul>
+        <li>At each decision point, the <code>Runner</code> asks the expert for its state after 120 s and 300 s. It holds each dose at its mean of the last 60 s.</li>
+        <li>The expert copies its state, simulates ahead, then restores the state. Columns: <code>&lt;expert&gt;.&lt;signal&gt;@&lt;h&gt;</code>.</li>
+        <li>With <code>whatif: [0.8, 1.2]</code>, AnestheSIM also simulates each TCI target × 0.8, × 1 and × 1.2. Its own TCI controller (<code>_tci_rate</code>) steers the effect-site concentration to the new target, as a real TCI pump does.</li>
+        <li>The feature is the effect: what-if minus the × 1 scenario.</li>
+        <li>In the live twin, <code>Runner.effect</code> uses the same method for the suggested new setting.</li>
+      </ul>
+    </details>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-labels">6.4 &nbsp;Labels and targets (<code>labels.py</code>, <code>targets.py</code>)</h3></summary>
+    <ul>
+      <li><b>Value target</b> (map, bis, hr): the value one horizon ahead. The future observation must be fresh (staleness ≤ 10 s). Else the label is NaN.</li>
+      <li><b>Event target</b> (hypotension): 1 if an event occurs at any time in (t, t + horizon].
+      An event is MAP (5 s median) below 65 mmHg for 60 s or more. Missing MAP never counts as low.</li>
+      <li><b>Intervention</b>: a change of the TCI target that holds for 30 s or more and is 5 % or more.
+      A short value while the knob turns (3 → 3.5 → 4) is not an intervention.
+      A pump start is an intervention.</li>
+      <li><b>Suggestion label</b>: the direction (decrease, hold, increase) and the new value of the first intervention in the 60 s after the decision point.</li>
+    </ul>
+    <p>To add a vital as a target, add one <code>Target</code> to <code>TARGETS</code> and its name to <code>targets:</code> in the YAML.</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-features">6.5 &nbsp;Features (<code>features.py</code>)</h3></summary>
+    <p><code>window_features</code> makes the <code>x.</code> columns. All windows look back only.</p>
+    <table>
+      <thead><tr><th>Column type</th><th>Features</th></tr></thead>
+      <tbody>
+        <tr><td>Level or setting channel</td><td>last value; per window: mean, min, max, std, slope</td></tr>
+        <tr><td>Expert signal</td><td>last value; per window: mean, slope</td></tr>
+        <tr><td>Expert lookahead</td><td>the value and the change from the current value</td></tr>
+        <tr><td>What-if</td><td>the effect: the difference from the × 1 scenario</td></tr>
+        <tr><td>Dose channel</td><td>sum per window (amount given)</td></tr>
+        <tr><td>Staleness column</td><td>the current value only</td></tr>
+        <tr><td>Patient</td><td>age, male, height, weight, BMI, ASA</td></tr>
+        <tr><td>Phase</td><td>seconds since anaesthesia start; surgery under way (0/1)</td></tr>
+      </tbody>
+    </table>
+    <p>The live twin calls the same function on its rolling buffer.</p>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-cache">7 &nbsp;Stage cache (<code>stages.py</code>)</h2></summary>
+  <p>Each stage writes one Parquet file per case:</p>
+<pre><code>data/derived/&lt;stage&gt;/&lt;config hash&gt;/&lt;caseid:04d&gt;.parquet
+data/derived/&lt;stage&gt;/&lt;config hash&gt;/config.json      # the config that made the hash</code></pre>
+  <table>
+    <thead><tr><th>Stage</th><th>Key (from <code>Config</code>)</th><th>Version</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td><code>channels</code></td><td><code>channels_key</code>: all channels, step, perturbation, seed</td><td>2</td><td>Grid of all channels and staleness</td></tr>
+      <tr><td><code>experts</code></td><td><code>expert_key</code>: one expert spec, its class version, step, perturbation, seed, lookahead</td><td>2</td><td>Signals of one expert (one folder per expert)</td></tr>
+      <tr><td><code>rows</code></td><td><code>rows_key</code>: the two keys above, targets, horizons, decision interval, features, suggestion</td><td>7</td><td>Decision-point rows of one case</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>The hash is SHA-256 of the key and the stage version (12 hex digits).</li>
+    <li>The cache cannot see changes of the code. When a change alters a result, increase the number in <code>stages.VERSIONS</code>. Also increase the numbers of the stages that depend on it.</li>
+    <li>An expert class can have its own <code>version</code> (AnestheSIM has 1). A change then recomputes only experts of that kind.</li>
+    <li>A write goes to a <code>.part</code> file first and then moves. Thus parallel processes do not see half files.</li>
+    <li><code>inventory</code> and <code>cohort</code> also write to <code>data/derived/</code>: <code>track_inventory.parquet</code>, <code>drug_usage.parquet</code> and the frozen cohort manifests.</li>
+  </ul>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-learn">8 &nbsp;Models, split and evaluation</h2></summary>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-split">8.1 &nbsp;Split (<code>splits.py</code>, <code>pipeline.split</code>)</h3></summary>
+    <ul>
+      <li>The split is by patient (<code>subjectid</code>), never by row or case. 80 % of the patients train, 20 % test.</li>
+      <li>With a perturbation, half of the training patients come from the perturbed rows. Each patient is in the training set once.</li>
+      <li>The test has two sets: <code>clean</code> and <code>perturbed</code> (the same test patients with sensor faults).</li>
+      <li>Cross-validation uses <code>GroupKFold</code> by patient, 5 folds.</li>
+    </ul>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-stack">8.2 &nbsp;Two levels of models</h3></summary>
+    <figure>
+      <svg viewBox="0 0 920 190" role="img" aria-label="Forecasters feed the suggesters">
+        <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3b0a8"/></marker></defs>
+        <style>#f3 .arrow { marker-end: url(#ah3); }</style>
+        <g id="f3">
+        <rect class="b-learn" x="20" y="50" width="170" height="80" rx="5"/>
+        <text x="105" y="80" text-anchor="middle" class="hd">x.* features</text>
+        <text x="105" y="100" text-anchor="middle" class="sm">~733 columns</text>
+        <rect class="b-learn" x="240" y="30" width="200" height="120" rx="5"/>
+        <text x="340" y="58" text-anchor="middle" class="hd">Forecasters</text>
+        <text x="340" y="80" text-anchor="middle" class="sm">1 LightGBM per (target, horizon)</text>
+        <text x="340" y="98" text-anchor="middle" class="sm">4 targets × 4 horizons = 16</text>
+        <text x="340" y="116" text-anchor="middle" class="sm">value: regressor</text>
+        <text x="340" y="134" text-anchor="middle" class="sm">hypotension: classifier</text>
+        <rect class="b-learn" x="490" y="50" width="150" height="80" rx="5"/>
+        <text x="565" y="80" text-anchor="middle" class="hd">f.* forecasts</text>
+        <text x="565" y="100" text-anchor="middle" class="sm">out-of-fold on train</text>
+        <rect class="b-learn" x="690" y="30" width="210" height="120" rx="5"/>
+        <text x="795" y="58" text-anchor="middle" class="hd">Suggesters (per drug)</text>
+        <text x="795" y="80" text-anchor="middle" class="sm">isotonic-calibrated classifier</text>
+        <text x="795" y="98" text-anchor="middle" class="sm">→ p_decrease / p_hold / p_increase</text>
+        <text x="795" y="116" text-anchor="middle" class="sm">2 regressors</text>
+        <text x="795" y="134" text-anchor="middle" class="sm">→ setting_decrease / _increase</text>
+        <path class="arrow" d="M190,90 L238,90"/>
+        <path class="arrow" d="M440,90 L488,90"/>
+        <path class="arrow" d="M640,90 L688,90"/>
+        <path class="arrow dash" d="M105,50 L105,14 L795,14 L795,28"/>
+        <text x="450" y="10" text-anchor="middle" class="sm">x.* also go directly to the suggesters</text>
+        </g>
+      </svg>
+      <figcaption>Figure 3. The forecasts are inputs of the suggesters (stacking). A predicted hypotension can thus drive a suggested decrease.</figcaption>
+    </figure>
+    <ul>
+      <li><code>forecasting.fit_with_out_of_fold</code> trains one model per fold and predicts the rows of the patients that the model did not see.
+      The suggesters train on these predictions. So they learn how much they can trust a forecast on a new patient.</li>
+      <li>Then a final forecaster trains on all training rows. It predicts the test rows.</li>
+      <li>LightGBM accepts NaN. Missing channels and experts that do not apply leave NaN.</li>
+      <li>The default parameters are in <code>configs/default.yaml</code> under <code>model:</code> (400 trees, learning rate 0.03, 30 % of the features per tree).</li>
+      <li>The regressor of the suggester clips the result: a decrease stays at or below the current setting, an increase at or above.</li>
+    </ul>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-eval">8.3 &nbsp;Evaluation (<code>evaluation.py</code>)</h3></summary>
+    <p>Each model has a baseline that does not learn:</p>
+    <table>
+      <thead><tr><th>Model</th><th>Metrics</th><th>Baseline</th></tr></thead>
+      <tbody>
+        <tr><td>Value forecaster</td><td>MAE, RMSE</td><td>Persistence (the current value stays)</td></tr>
+        <tr><td>Hypotension forecaster</td><td>AUROC, AUPRC, sensitivity at 10 % alert rate, Brier, ECE; also on onsets only</td><td>“MAP already low” (score = −current MAP)</td></tr>
+        <tr><td>Suggester</td><td>log loss, AUROC per direction, ECE; MAE of the new setting</td><td>Class prior; “keep the current setting”</td></tr>
+      </tbody>
+    </table>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-other">8.4 &nbsp;Ablation and verification</h3></summary>
+    <ul>
+      <li><code>ablation.run</code> trains the forecasters again without one group of inputs: no experts, only one expert, no staleness, no covariates, no phase. Output: <code>models/&lt;run&gt;/ablation.json</code>.</li>
+      <li><code>verification.fidelity</code> compares each expert with reality, per case, with Varvel metrics (MDPE, MDAPE, RMSE).
+      Concentrations go against the pump's own TCI model (<code>propofol_ce_pump</code>). BIS and MAP go against the monitor.
+      Only fresh values (staleness ≤ 5 s) during anaesthesia count.</li>
+    </ul>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-live">9 &nbsp;Live twin (<code>live/</code>)</h2></summary>
+  <figure>
+    <svg viewBox="0 0 920 330" role="img" aria-label="Live twin">
+      <defs><marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3b0a8"/></marker></defs>
+      <style>#f4 .arrow { marker-end: url(#ah4); }</style>
+      <g id="f4">
+      <rect class="b-live" x="20" y="20" width="190" height="84" rx="5"/>
+      <text x="115" y="44" text-anchor="middle" class="hd">replayer.records</text>
+      <text x="115" y="64" text-anchor="middle" class="sm">raw (t, track, value)</text>
+      <text x="115" y="80" text-anchor="middle" class="sm">all tracks merged by time</text>
+      <rect class="b-live" x="250" y="20" width="190" height="84" rx="5"/>
+      <text x="345" y="44" text-anchor="middle" class="hd">Twin.observe</text>
+      <text x="345" y="64" text-anchor="middle" class="sm">last value per channel</text>
+      <text x="345" y="80" text-anchor="middle" class="sm">DoseCounter per pump</text>
+      <rect class="b-live" x="480" y="20" width="190" height="84" rx="5"/>
+      <text x="575" y="44" text-anchor="middle" class="hd">Twin.tick(t), every 1 s</text>
+      <text x="575" y="64" text-anchor="middle" class="sm">_grid_row + staleness</text>
+      <text x="575" y="80" text-anchor="middle" class="sm">Runner.step per expert</text>
+      <rect class="b-live" x="710" y="20" width="190" height="84" rx="5"/>
+      <text x="805" y="44" text-anchor="middle" class="hd">buffer</text>
+      <text x="805" y="64" text-anchor="middle" class="sm">deque of the last 1801 s</text>
+      <text x="805" y="80" text-anchor="middle" class="sm">(longest window + 1)</text>
+      <path class="arrow" d="M210,62 L248,62"/>
+      <path class="arrow" d="M440,62 L478,62"/>
+      <path class="arrow" d="M670,62 L708,62"/>
+      <path class="arrow" d="M805,104 L805,124 L115,124 L115,148"/>
+      <text x="460" y="140" text-anchor="middle" class="sm">at a decision point (t mod 30 s = 0): Twin.decide</text>
+
+      <rect class="b-learn" x="20" y="150" width="190" height="84" rx="5"/>
+      <text x="115" y="174" text-anchor="middle" class="hd">Twin.features</text>
+      <text x="115" y="194" text-anchor="middle" class="sm">window_features on buffer</text>
+      <text x="115" y="210" text-anchor="middle" class="sm">+ covariates + phase</text>
+      <rect class="b-learn" x="250" y="150" width="190" height="84" rx="5"/>
+      <text x="345" y="174" text-anchor="middle" class="hd">forecasters</text>
+      <text x="345" y="194" text-anchor="middle" class="sm">from models.joblib</text>
+      <text x="345" y="210" text-anchor="middle" class="sm">→ f.* into the row</text>
+      <rect class="b-learn" x="480" y="150" width="190" height="84" rx="5"/>
+      <text x="575" y="174" text-anchor="middle" class="hd">suggesters</text>
+      <text x="575" y="194" text-anchor="middle" class="sm">+ Runner.effect (what-if</text>
+      <text x="575" y="210" text-anchor="middle" class="sm">of each suggested setting)</text>
+      <rect class="b-out" x="710" y="150" width="190" height="84" rx="5"/>
+      <text x="805" y="174" text-anchor="middle" class="hd">decision (dict)</text>
+      <text x="805" y="194" text-anchor="middle" class="sm">dte replay: DataFrame,</text>
+      <text x="805" y="210" text-anchor="middle" class="sm">CSV or Parquet</text>
+      <path class="arrow" d="M210,192 L248,192"/>
+      <path class="arrow" d="M440,192 L478,192"/>
+      <path class="arrow" d="M670,192 L708,192"/>
+
+      <rect class="b-cli" x="20" y="260" width="250" height="56" rx="5" stroke-dasharray="5 4"/>
+      <text x="145" y="283" text-anchor="middle" class="hd">Mosquitto (MQTT)</text>
+      <text x="145" y="301" text-anchor="middle" class="sm">twin/&lt;caseid&gt;/track/&lt;dev&gt;/&lt;track&gt;</text>
+      <rect class="b-cli" x="335" y="260" width="250" height="56" rx="5" stroke-dasharray="5 4"/>
+      <text x="460" y="283" text-anchor="middle" class="hd">InfluxDB</text>
+      <text x="460" y="301" text-anchor="middle" class="sm">decisions over time</text>
+      <rect class="b-cli" x="650" y="260" width="250" height="56" rx="5" stroke-dasharray="5 4"/>
+      <text x="775" y="283" text-anchor="middle" class="hd">Grafana</text>
+      <text x="775" y="301" text-anchor="middle" class="sm">dashboard</text>
+      <path class="arrow dash" d="M270,288 L333,288"/>
+      <path class="arrow dash" d="M585,288 L648,288"/>
+      </g>
+    </svg>
+    <figcaption>Figure 4. The live twin. The top two rows exist and run in <code>dte replay</code>. The dashed row is the planned service layer (<code>docker-compose.yml</code>); <code>replay_mqtt</code> raises <code>NotImplementedError</code>.</figcaption>
+  </figure>
+  <ul>
+    <li>The replayer sends <b>raw records</b>, not grid values. The twin makes its own grid. Thus it sees the same data as the offline pipeline.</li>
+    <li><code>tests/test_live.py</code> replays a case with a pump volume jump. It checks that the twin grid is equal to the offline frame.</li>
+    <li>The twin knows the phase times (anaesthesia start, surgery start and end) from VitalDB's EVENT track. In <code>dte replay</code>, they come from <code>clinical_data</code>.</li>
+    <li><code>replayer.load_run(run)</code> reads <code>models/&lt;run&gt;/config.json</code> and <code>models.joblib</code>. So the twin uses the configuration of its training run.</li>
+  </ul>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-config">10 &nbsp;Configuration files</h2></summary>
+  <details class="sec sub">
+    <summary><h3 id="s-config-pipeline">10.1 &nbsp;Pipeline configuration (<code>configs/*.yaml</code> → <code>config.Config</code>)</h3></summary>
+    <table>
+      <thead><tr><th>Field</th><th>Default YAML</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>channels</code></td><td>map, sbp, dbp, hr, bis, sqi, spo2, etco2, 2 × pump Ce</td><td>Channels for the features. <code>Config.all_channels</code> adds the expert inputs and the suggestion settings.</td></tr>
+        <tr><td><code>experts</code></td><td>3 × PAS, 2 × AnestheSIM</td><td>One dictionary per expert. <code>kind</code> selects the class.</td></tr>
+        <tr><td><code>expert_lookahead_s</code></td><td>[120, 300]</td><td>Horizons of the expert lookaheads.</td></tr>
+        <tr><td><code>targets</code>, <code>horizons_s</code></td><td>[map, bis, hr, hypotension], [60, 180, 300, 600]</td><td>One forecaster per pair.</td></tr>
+        <tr><td><code>step_s</code>, <code>decision_every_s</code></td><td>1, 30</td><td>Grid step; interval of decision points (30 s to fit 32 GB RAM).</td></tr>
+        <tr><td><code>features.windows_s</code></td><td>[60, 300, 900, 1800]</td><td>Look-back windows.</td></tr>
+        <tr><td><code>suggestion</code></td><td>drugs, window 60 s, hold 30 s, change 5 %</td><td>Rules of the intervention labels.</td></tr>
+        <tr><td><code>perturbation</code></td><td>delay ≤ 10 s, 4 dropouts/h, 30 s</td><td>Sensor faults for training. <code>null</code>: no perturbed rows.</td></tr>
+        <tr><td><code>model</code></td><td>400 trees, lr 0.03, …</td><td>LightGBM parameters.</td></tr>
+        <tr><td><code>folds</code>, <code>test_fraction</code>, <code>seed</code></td><td>5, 0.2, 0</td><td>Split and cross-validation.</td></tr>
+      </tbody>
+    </table>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-config-cohort">10.2 &nbsp;Cohort (<code>cohorts/*.yaml</code> → <code>cohort.Cohort</code>)</h3></summary>
+<pre><code>name: tiva-artline
+channels: [map, bis, hr, propofol_dose, remifentanil_dose, propofol_target, remifentanil_target]
+where:
+  ane_type: General
+  agents: propofol+remifentanil   # drugs given, not only a track present
+  age: {min: 18}
+min_duration_s: 3600</code></pre>
+    <p>A case must also have age, sex, height and weight.
+    <code>dte cohort</code> writes the case list to a manifest. The training run saves the manifest too.</p>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-modules">11 &nbsp;Module table (generated)</h2></summary>
+  <p><code>build.py</code> makes this table from the source code with the Python <code>ast</code> module.
+  “Imports” lists only the modules of this package, also imports inside functions.
+  The raw data is in <code>evaluation-01/modules.json</code>.</p>
+  {{MODULE_TABLE}}
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-tests">12 &nbsp;Tests</h2></summary>
+  <table>
+    <thead><tr><th>File</th><th>What it checks</th></tr></thead>
+    <tbody>
+      <tr><td><code>tests/test_channels.py</code></td><td>Dose counter (jitter, resets, glitches, late re-base); causal grid; staleness; artefacts; perturbation is independent per channel.</td></tr>
+      <tr><td><code>tests/test_labels.py</code></td><td>Hypotension needs a full minute; spikes; missing MAP; knob transients; value and event targets.</td></tr>
+      <tr><td><code>tests/test_experts.py</code></td><td>Pre-dose baseline; lookahead equals real steps and keeps the state; TCI reaches its target; what-if direction.</td></tr>
+      <tr><td><code>tests/test_anesthesim.py</code></td><td>The AnestheSIM port: steady state, effect-site lag, norepinephrine lag, BIS direction, volatile agents, speed.</td></tr>
+      <tr><td><code>tests/test_suggestion.py</code></td><td>Suggested settings stay on the correct side of the current setting.</td></tr>
+      <tr><td><code>tests/test_live.py</code></td><td>The live twin grid equals the offline frame (causality).</td></tr>
+    </tbody>
+  </table>
+  <p>Run: <code>uv run pytest</code>. Some tests need VitalDB files.</p>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-adr">13 &nbsp;Design decisions (ADRs)</h2></summary>
+  <table>
+    <thead><tr><th>ADR</th><th>Decision</th><th>Rejected option and reason</th></tr></thead>
+    <tbody>
+      <tr><td>0001</td><td>Expert signals are inputs of the forecaster.</td><td>A gated mixture of experts. The experts predict different quantities. The forecaster learns how much to trust each expert.</td></tr>
+      <tr><td>0002</td><td>Causal 1 s grid with staleness. Sensor faults come from perturbation of the raw records.</td><td>Interpolation. It uses the future and hides gaps.</td></tr>
+      <tr><td>0003</td><td>PAS from git commit <code>4f9509f</code>, with overrides for scipy and control, on Python 3.14.</td><td>PyPI 1.0.0 (old models, breaks on numpy 2); newer git main (does not import); Python 3.12 (not necessary). Note: PAS is GPLv3.</td></tr>
+      <tr><td>0004</td><td>An intervention on a TCI pump is a change of the target concentration.</td><td>Rate changes. The pump controller makes them, not the clinician.</td></tr>
+    </tbody>
+  </table>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-results">14 &nbsp;Results at a glance</h2></summary>
+  <p>Source: <code>docs/results.md</code> (run <code>fourth</code>, cohort tiva-artline, 1,585 cases, 1,543 patients). This report did not reproduce these numbers.</p>
+  <table>
+    <thead><tr><th>Question</th><th>Model</th><th>Baseline</th></tr></thead>
+    <tbody>
+      <tr><td>MAP RMSE at 5 min (mmHg)</td><td class="num">12.09</td><td class="num">16.19 (persistence)</td></tr>
+      <tr><td>BIS RMSE at 5 min</td><td class="num">7.33</td><td class="num">9.80</td></tr>
+      <tr><td>Hypotension onset AUROC at 5 min</td><td class="num">0.888</td><td class="num">0.754 (MAP already low)</td></tr>
+      <tr><td>Propofol suggester log loss</td><td class="num">0.189</td><td class="num">0.228 (class prior)</td></tr>
+      <tr><td>Propofol Ce, PAS Marsh vs pump (MDAPE)</td><td class="num">2.6 %</td><td>–</td></tr>
+    </tbody>
+  </table>
+  <div class="box"><p>Important for the architecture: the ablation shows that the expert models add almost nothing to the forecast accuracy (BIS RMSE −0.02).
+  The value of the experts is elsewhere: concentrations that no monitor shows, and the what-if effects.</p></div>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-extend">15 &nbsp;How to extend the project</h2></summary>
+  <table>
+    <thead><tr><th>Task</th><th>Where to change</th><th>Also do</th></tr></thead>
+    <tbody>
+      <tr><td>Add a signal</td><td><code>channels.CHANNELS</code>: one <code>Channel</code></td><td>Add it to <code>channels:</code> in the YAML. The hash of the cache changes automatically.</td></tr>
+      <tr><td>Add a forecast target</td><td><code>targets.TARGETS</code>: one <code>Target</code></td><td>Add it to <code>targets:</code> in the YAML.</td></tr>
+      <tr><td>Add an expert kind</td><td>New class in <code>experts/</code> with <code>reset</code> and <code>step</code>; register it in <code>experts.kinds()</code></td><td>Optional: <code>lookahead</code>, <code>lookahead_columns</code>, <code>scenario</code>, <code>version</code>.</td></tr>
+      <tr><td>Add an expert configuration</td><td><code>experts:</code> in the YAML</td><td>Only this expert is computed. The others come from the cache.</td></tr>
+      <tr><td>Change the model family</td><td><code>forecasting._model</code></td><td>Keep <code>fit</code>, <code>predict</code> and <code>predict_proba</code>.</td></tr>
+      <tr><td>Change how a stage computes</td><td>The stage module</td><td>Increase <code>stages.VERSIONS</code> for this stage and the stages after it.</td></tr>
+      <tr><td>New cohort</td><td>New YAML in <code>cohorts/</code></td><td>Use <code>dte explore</code> and <code>dte coverage</code> to choose criteria.</td></tr>
+    </tbody>
+  </table>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-gaps">16 &nbsp;Open items and observations</h2></summary>
+  <p>These items come from a read of the code and the plan. They are not bugs that a test showed.</p>
+  <ul>
+    <li><b>The service layer is not ready.</b> <code>replay_mqtt</code> raises <code>NotImplementedError</code>. <code>docker-compose.yml</code> has no replayer and no twin service. The plan puts “replay → MQTT → twin → InfluxDB → Grafana” in “Must”.</li>
+    <li><b>The plan and the code differ.</b> The plan names PAS as the drug model. The code adds the AnestheSIM port, which gives the lookaheads and the what-if. The plan names a warning model. The code also has BIS, HR and MAP forecasters and intervention suggesters.</li>
+    <li><b>PAS has no lookahead.</b> The config comment says that PAS is too slow for it.</li>
+    <li><b>The cache does not see code changes.</b> A developer must increase <code>stages.VERSIONS</code> by hand. If not, old results stay in use.</li>
+    <li><b>Memory limit.</b> The decision interval is 30 s, not 10 s, to fit the TIVA cohort in 32 GB of RAM.</li>
+    <li><b>Boluses are not visible.</b> VitalDB gives only totals per case for boluses.</li>
+    <li><b>The suggesters copy one hospital's practice.</b> They do not show what is correct.</li>
+    <li><b>Licence.</b> PAS is GPLv3. AnestheSIM is MIT and its notice must stay in <code>experts/anesthesim.py</code>.</li>
+  </ul>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-read">17 &nbsp;Suggested order to read the code</h2></summary>
+  <ol>
+    <li><code>GLOSSARY.md</code> and <code>docs/adr/</code>: the words and the four decisions.</li>
+    <li><code>cli.py</code>: all entry points on one page.</li>
+    <li><code>channels.py</code>: <code>Channel</code>, <code>to_grid</code>, <code>DoseCounter</code>.</li>
+    <li><code>config.py</code> and <code>stages.py</code>: configuration and cache keys.</li>
+    <li><code>experts/__init__.py</code>, then <code>experts/baseline.py</code>, <code>experts/pas.py</code>, <code>experts/anesthesim.py</code>.</li>
+    <li><code>labels.py</code>, <code>targets.py</code>, <code>features.py</code>.</li>
+    <li><code>dataset.py</code>: how the parts join into rows.</li>
+    <li><code>pipeline.py</code>, <code>forecasting.py</code>, <code>suggestion.py</code>, <code>evaluation.py</code>.</li>
+    <li><code>live/twin.py</code> and <code>live/replayer.py</code>; then <code>tests/test_live.py</code>.</li>
+    <li><code>docs/results.md</code>: what the models achieve.</li>
+  </ol>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-process">18 &nbsp;Discussion process and decisions</h2></summary>
+  <p>The request is in <code>context/evaluation-01/task01-init-report.md</code>: “Make a html report to help me figure out the architecture of this project.”
+  It also gives the style and the file layout.
+  The request was clear, so no questions were asked before the work.</p>
+  <table>
+    <thead><tr><th>Topic</th><th>Options</th><th>Decision</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>Marker tool</td><td>(a) Copy <code>marks.js</code> and <code>marks.css</code> of the hydrodynamics homework 02 and adapt them. (b) Write a new tool.</td><td>(a)</td><td>The request names that report as the model. A copy gives the same behaviour and the same JSON format. Changes: file name, storage keys, <code>&lt;pre&gt;</code> blocks can get a mark, no MathJax.</td></tr>
+      <tr><td>Export short key</td><td>Ctrl+S, or a new key</td><td>Ctrl+S (Mac: ⌘S)</td><td>Same as the reference report.</td></tr>
+      <tr><td>Theme</td><td>(a) Dark only. (b) Dark and light with a button.</td><td>(a)</td><td>The request asks for a dark theme. One theme keeps the CSS small.</td></tr>
+      <tr><td>Foldable sections</td><td><code>&lt;details&gt;</code> elements, or JavaScript</td><td><code>&lt;details class="sec"&gt;</code></td><td>No script is necessary. The marker tool uses these sections for its keys.</td></tr>
+      <tr><td>Diagrams</td><td>(a) Inline SVG written by hand. (b) Mermaid from a CDN. (c) Images made by a script.</td><td>(a)</td><td>The page stays one file and works offline. No external script.</td></tr>
+      <tr><td>Module table</td><td>Write by hand, or make it from the code</td><td>Make it with <code>ast</code> in <code>build.py</code></td><td>The table stays true to the code. Run <code>build.py</code> again after a code change.</td></tr>
+      <tr><td>Source of facts</td><td>Run the pipeline, or read the code and docs</td><td>Read the code at commit <code>{{SOURCE_COMMIT}}</code>, <code>README.md</code>, <code>GLOSSARY.md</code>, the ADRs, <code>docs/results.md</code> and the project plan PDF</td><td><code>data/</code> and <code>models/</code> are not on this machine. The numbers come from <code>docs/results.md</code>.</td></tr>
+      <tr><td>Build</td><td>Edit the final HTML, or build it from a template</td><td>Template + <code>build.py</code></td><td>Same method as the reference report: edit the template, run the script, get one self-contained file.</td></tr>
+    </tbody>
+  </table>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-artifacts">19 &nbsp;Location of the artifacts</h2></summary>
+  <p>All paths are relative to the repository root.</p>
+  <table>
+    <thead><tr><th>Path</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><code>context/evaluation-01/task01-init-report.md</code></td><td>The request (task instruction).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01.html</code></td><td>This report (made by <code>build.py</code>; do not edit).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01-markers.json</code></td><td>The study marks. <code>build.py</code> puts them into the page. Ctrl+S writes them.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/template.html</code></td><td>Text and diagrams of the report.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/style.css</code></td><td>Dark page style.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/marks.js</code>, <code>marks.css</code></td><td>Marker tool (adapted copy).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/build.py</code></td><td>Build script. It also describes how the data of the report is made.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/modules.json</code></td><td>Module data from <code>build.py</code> (lines, docstring, imports).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/misc/</code></td><td>Other files: notes about the origin of the marker tool.</td></tr>
+      <tr><td><code>src/digital_twin_engineering/</code>, <code>configs/</code>, <code>cohorts/</code>, <code>docs/</code>, <code>tests/</code>, <code>GLOSSARY.md</code>, <code>README.md</code>, <code>docker-compose.yml</code>, <code>pyproject.toml</code></td><td>Inputs: the project files that this report describes.</td></tr>
+      <tr><td><code>Anaesthesia Digital Twin Project Plan.pdf</code></td><td>Input: goal, scope and priorities of the project.</td></tr>
+      <tr><td><code>…/course-hydrodynamics/resources/homeworks/homework02/homework02_report.html</code>, <code>marks.js</code>, <code>marks.css</code>, <code>theme.css</code></td><td>Input: the reference report for the marker tool and the dark colours (outside this repository).</td></tr>
+    </tbody>
+  </table>
+  <p>To build the report again:</p>
+<pre><code>python3 context/evaluation-01/task01/evaluation-01/build.py</code></pre>
+</details>
+</main>
+
+<script>
+// Open all / close all sections.
+(function () {
+  const all = () => document.querySelectorAll('details.sec');
+  document.getElementById('open-all').addEventListener('click', () => all().forEach(d => { d.open = true; }));
+  document.getElementById('close-all').addEventListener('click', () => all().forEach(d => { d.open = false; }));
+  // A click on a link of the contents opens the target section.
+  document.querySelectorAll('nav.toc a[href^="#"]').forEach(a => a.addEventListener('click', () => {
+    const el = document.querySelector(a.getAttribute('href'));
+    for (let d = el && el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+  }));
+})();
+</script>
+<script type="application/json" id="mk-committed">
+{{INLINE:markers.json}}
+</script>
+<script>
+{{INLINE:marks.js}}
+</script>
+</body>
+</html>

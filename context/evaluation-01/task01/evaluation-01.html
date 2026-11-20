@@ -1,0 +1,1652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluation 01 · Task 01 – Architecture of the anaesthesia digital twin (BlooDT)</title>
+<!--
+  Source of evaluation-01.html. Do not edit evaluation-01.html: edit this file, then run
+    python3 context/evaluation-01/task01/evaluation-01/build.py
+  Placeholders (in double curly braces): INLINE:<file> (CSS, JS, marker JSON), MODULE_TABLE,
+  SOURCE_COMMIT, BUILD_DATE, TOTAL_LINES.
+  Layout: one sentence per line. Each section is <details class="sec"> with <h2 id> in <summary>.
+  The marker tool needs this: it uses the ids of the sections in the keys of the marks.
+-->
+<style>
+/* ---- Page style of evaluation-01.html (dark theme only) */
+:root {
+  color-scheme: dark;
+  --surface: #17181b; --panel: #222429; --ink: #e9e7e2; --ink2: #b3b0a8; --muted: #8b887f;
+  --rule: #34363c; --s1: #6aa8f0; --s2: #f08a5d; --s3: #3fc795; --s4: #f0b429; --s5: #a597f5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink);
+       font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header, main { max-width: 980px; margin: 0 auto; padding: 0 56px 0 24px; }
+header { padding-top: 28px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+h1 { font-size: 1.7rem; margin: 0 0 4px; }
+h2 { font-size: 1.3rem; margin: 0; display: inline; }
+h3 { font-size: 1.08rem; margin: 0; display: inline; }
+a { color: var(--s1); }
+code, pre { font: 13.5px/1.5 ui-monospace, "JetBrains Mono", Menlo, monospace; }
+code { background: var(--panel); padding: 1px 4px; border-radius: 3px; }
+pre { background: #111215; border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.meta { color: var(--ink2); font-size: .9rem; }
+.small { font-size: .9rem; color: var(--ink2); }
+
+/* foldable sections: <details class="sec"> with the title in <summary> */
+details.sec { border-top: 1px solid var(--rule); padding: 10px 0; }
+details.sec > summary { list-style: none; cursor: pointer; padding: 4px 0; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary > h2::before, details.sec > summary > h3::before {
+  content: "▸"; display: inline-block; width: 1.1em; color: var(--ink2); transition: transform .15s; }
+details.sec[open] > summary > h2::before, details.sec[open] > summary > h3::before { transform: rotate(90deg); }
+details.sec > summary:hover > h2, details.sec > summary:hover > h3 { color: var(--s1); }
+details.sec.sub { margin-left: 18px; border-top: 1px dashed var(--rule); }
+details.sec > summary .hint { color: var(--muted); font-size: .85rem; margin-left: 8px; }
+
+/* small fold boxes inside a section */
+details.fold { border-left: 3px solid var(--s5); background: #232038; border-radius: 4px; padding: 4px 12px; margin: 10px 0; }
+details.fold > summary { cursor: pointer; color: var(--ink2); }
+details.fold > summary .tag { font-weight: 600; color: var(--s5); margin-right: 8px; }
+details.fold.code { border-color: #8a9bb3; background: #1f252e; }
+details.fold.code > summary .tag { color: #a9b8cc; }
+
+/* boxes */
+div.box { background: #1b2635; border-left: 3px solid var(--s1); border-radius: 4px; padding: 8px 12px; margin: 12px 0; }
+div.box.take { background: #18302a; border-color: var(--s3); }
+div.box.warn { background: #34221a; border-color: var(--s2); }
+div.box > p:first-child { margin-top: 0; } div.box > p:last-child { margin-bottom: 0; }
+
+/* tables */
+table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .93rem; }
+th, td { border-bottom: 1px solid var(--rule); padding: 5px 8px; text-align: left; vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; background: var(--panel); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.modtab td:nth-child(3) { color: var(--ink2); }
+
+/* figures: inline SVG diagrams */
+figure { margin: 14px 0; }
+figure svg { width: 100%; height: auto; display: block; background: #1a1b1f; border: 1px solid var(--rule); border-radius: 6px; }
+figcaption { color: var(--ink2); font-size: .88rem; margin-top: 4px; }
+svg text { fill: var(--ink); font: 13px system-ui, sans-serif; }
+svg text.sm { font-size: 11px; fill: var(--ink2); }
+svg text.hd { font-weight: 600; }
+svg .b-data  { fill: #1b2635; stroke: #6aa8f0; }
+svg .b-sig   { fill: #18302a; stroke: #3fc795; }
+svg .b-model { fill: #2e2817; stroke: #f0b429; }
+svg .b-learn { fill: #232038; stroke: #a597f5; }
+svg .b-live  { fill: #361f20; stroke: #f06b6a; }
+svg .b-cli   { fill: #222429; stroke: #8b919c; }
+svg .b-out   { fill: #15302f; stroke: #3cb8b8; }
+svg rect { stroke-width: 1.4; }
+svg .arrow { stroke: var(--ink2); stroke-width: 1.4; fill: none; }  /* each figure sets its own marker-end */
+svg .arrow.dash { stroke-dasharray: 5 4; }
+
+/* table of contents */
+nav.toc { background: var(--panel); border-radius: 6px; padding: 10px 16px; margin: 16px 0; }
+nav.toc ol { margin: 4px 0; }
+.toc-buttons { margin-top: 6px; font-size: .9rem; }
+.toc-buttons button { font: inherit; padding: 2px 10px; border: 1px solid var(--rule); border-radius: 4px;
+                      background: var(--surface); color: var(--ink); cursor: pointer; margin-right: 4px; }
+.toc-buttons button:hover { border-color: var(--ink2); }
+
+/* colour legend of the layers */
+.legend span { display: inline-block; margin-right: 12px; font-size: .88rem; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; border: 1px solid; }
+/* ---- Study marks (marks.js) */
+:root { --mk-struggle: #e34948; --mk-unsure: #eda100; --mk-ok: #1baf7a;
+        --mk-struggle-bg: #fbe0e0; --mk-unsure-bg: #fcefc9; --mk-ok-bg: #d6f2e5; }
+
+/* flag at the right of each block: visible on hover, always visible when marked */
+.mk-host { position: relative; }
+.mk-eqwrap { display: block; }
+.mk-flag { position: absolute; top: 2px; right: -30px; width: 22px; height: 22px; padding: 0;
+           border: 0; border-radius: 4px; background: transparent; color: var(--muted);
+           font: 14px/22px system-ui, sans-serif; cursor: pointer; opacity: 0; transition: opacity .12s; }
+li.mk-host > .mk-flag { right: -54px; }  /* a step and its first paragraph: two columns of flags */
+tr .mk-flag { position: static; margin-left: 6px; }
+.mk-hot > .mk-flag, tr.mk-hot .mk-flag, .mk-flag:focus-visible { opacity: 1; }
+.mk-flag:hover { background: var(--panel); color: var(--ink); }
+
+/* a marked block: a coloured bar at the left and a light background */
+.mk-host.mk-L-struggle { box-shadow: -9px 0 0 -6px var(--mk-struggle); background-color: #fdf4f4; }
+.mk-host.mk-L-unsure   { box-shadow: -9px 0 0 -6px var(--mk-unsure);   background-color: #fefaef; }
+.mk-host.mk-L-ok       { box-shadow: -9px 0 0 -6px var(--mk-ok);       background-color: #f2fbf7; }
+.mk-host[class*="mk-L-"] > .mk-flag, tr[class*="mk-L-"] .mk-flag { opacity: 1; }
+.mk-L-struggle > .mk-flag, tr.mk-L-struggle .mk-flag { color: var(--mk-struggle); }
+.mk-L-unsure   > .mk-flag, tr.mk-L-unsure .mk-flag   { color: var(--mk-unsure); }
+.mk-L-ok       > .mk-flag, tr.mk-L-ok .mk-flag       { color: var(--mk-ok); }
+.mk-note > .mk-flag::after, tr.mk-note .mk-flag::after { content: "✎"; font-size: 10px; margin-left: -2px; }
+
+/* a marked selection */
+mark.mk-hl { color: inherit; padding: 0 1px; border-radius: 2px; cursor: pointer; }
+mark.mk-hl.mk-L-struggle, mjx-container.mk-hlm.mk-L-struggle { background: var(--mk-struggle-bg); }
+mark.mk-hl.mk-L-unsure,   mjx-container.mk-hlm.mk-L-unsure   { background: var(--mk-unsure-bg); }
+mark.mk-hl.mk-L-ok,       mjx-container.mk-hlm.mk-L-ok       { background: var(--mk-ok-bg); }
+mjx-container.mk-hlm { cursor: pointer; border-radius: 3px; }
+
+/* focus filter and the jump target */
+body.mk-focus .mk-dim { opacity: .25; transition: opacity .2s; }
+body.mk-focus .mk-dim:hover { opacity: .7; }
+.mk-flash { outline: 2px solid var(--s1); outline-offset: 3px; transition: outline-color 1s; }
+
+/* shared look of the tool */
+.mk-ui { font: 13px/1.45 system-ui, sans-serif; }
+.mk-ui button { font: inherit; }
+.mk-selbtn, .mk-bar button, .mk-pop button, .mk-panel button {
+  padding: 3px 10px; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); cursor: pointer; }
+.mk-ui button:hover { border-color: var(--ink2); }
+.mk-ui button.mk-on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.mk-selbtn { position: absolute; z-index: 65; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.mk-selbtn.mk-err { color: var(--ink2); cursor: default; }
+
+.mk-bar { position: fixed; right: 16px; bottom: 16px; z-index: 50; display: flex; gap: 6px; }
+.mk-bar button { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+
+.mk-pop { position: absolute; z-index: 70; width: 300px; background: #fff; border: 1px solid var(--rule);
+          border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.15); padding: 10px 12px; }
+.mk-pop-head { color: var(--ink2); margin-bottom: 8px; word-break: break-word; }
+.mk-levels { display: flex; gap: 6px; margin-bottom: 8px; }
+.mk-pop .mk-lv.mk-L-struggle.mk-on { background: var(--mk-struggle); border-color: var(--mk-struggle); color: #fff; }
+.mk-pop .mk-lv.mk-L-unsure.mk-on   { background: var(--mk-unsure);   border-color: var(--mk-unsure);   color: #fff; }
+.mk-pop .mk-lv.mk-L-ok.mk-on       { background: var(--mk-ok);       border-color: var(--mk-ok);       color: #fff; }
+.mk-pop textarea, .mk-io { width: 100%; font: 12px/1.4 ui-monospace, monospace; border: 1px solid var(--rule); border-radius: 4px; padding: 5px; }
+.mk-pop textarea { font-family: system-ui, sans-serif; font-size: 13px; }
+.mk-pop-foot { display: flex; justify-content: space-between; margin-top: 6px; }
+
+.mk-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 60; width: min(380px, 92vw); overflow: auto;
+            background: #fff; border-left: 1px solid var(--rule); box-shadow: -4px 0 18px rgba(0,0,0,.08); padding: 14px 16px 70px; }
+.mk-panel-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; }
+.mk-help { color: var(--ink2); margin: 8px 0; }
+.mk-counts { display: flex; gap: 14px; margin: 8px 0; }
+.mk-status { color: var(--ink2); margin: 8px 0; }
+.mk-warn { background: #fdf3ee; border-left: 3px solid var(--s2); padding: 6px 8px; margin: 8px 0; }
+.mk-warn button { margin: 4px 6px 0 0; }
+.mk-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.mk-group { margin-top: 14px; }
+.mk-where { font-weight: 600; color: var(--ink2); border-bottom: 1px solid var(--rule); padding-bottom: 2px; }
+.mk-group ul { list-style: none; margin: 4px 0; padding: 0; }
+.mk-item { padding: 5px 4px; border-radius: 4px; cursor: pointer; }
+.mk-item:hover { background: var(--panel); }
+.mk-item.mk-lost { cursor: default; color: var(--muted); }
+.mk-kind { color: var(--muted); margin-right: 6px; }
+.mk-item-note { margin: 2px 0 0 22px; font-style: italic; color: var(--ink2); }
+.mk-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.mk-dot.mk-L-struggle { background: var(--mk-struggle); }
+.mk-dot.mk-L-unsure   { background: var(--mk-unsure); }
+.mk-dot.mk-L-ok       { background: var(--mk-ok); }
+
+/* A short message at the bottom of the page (export with Ctrl+S) */
+.mk-toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 10000;
+            background: #2b2a27; color: #fff; padding: 8px 16px; border-radius: 6px;
+            font: 14px system-ui, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+
+/* ---- eval-01: dark theme only. These rules replace the light colours above
+   (from the dark block of homework02/theme.css). */
+:root { --mk-struggle-bg: #5a2526; --mk-unsure-bg: #574515; --mk-ok-bg: #1d4a39; }
+.mk-host.mk-L-struggle { background-color: #2c1c1d; }
+.mk-host.mk-L-unsure   { background-color: #2b2516; }
+.mk-host.mk-L-ok       { background-color: #172a23; }
+.mk-pop, .mk-panel, .mk-selbtn, .mk-bar button, .mk-pop button, .mk-panel button { background: var(--panel); color: var(--ink); }
+.mk-ui button.mk-on { background: var(--ink); color: var(--surface); }
+.mk-pop textarea, .mk-io { background: var(--surface); color: var(--ink); }
+.mk-warn { background: #34221a; }
+.mk-pop, .mk-panel { box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Architecture of the anaesthesia digital twin</h1>
+  <p class="meta">Evaluation 01 · Task 01 · repository <code>BlooDT</code>, branch <code>tai/evaluation-01</code>, commit <code>ec45ac4</code> · built 2026-11-20</p>
+  <p class="small">This report helps you to understand the architecture of the project.
+     It describes the layers, the data flow, the main ideas and the extension points.
+     It does not change the code.</p>
+  <p class="small"><b>Study marks.</b> Click ⚑ at the right of a paragraph, list item, code block or table row to mark it.
+     Or select words, then click “Mark selection”.
+     Use the levels Struggle, Unsure and Got it, and write a note if necessary.
+     The “Marks” button at the bottom right shows all marks.
+     “Focus” dims all unmarked content.
+     Press <b>Ctrl+S</b> (Mac: ⌘S) to export the marks.
+     Save the file as <code>context/evaluation-01/task01/evaluation-01-markers.json</code>.
+     In Chrome or Edge, click “Link evaluation-01-markers.json…” in the Marks panel once.
+     Then the page reads that file at each load, and Ctrl+S writes to it.</p>
+  <p class="small">Style of the text: ASD-STE100 (Simplified Technical English).
+     Module, class and function names are technical names.</p>
+</header>
+
+<main>
+<nav class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#s-summary">Summary</a></li>
+    <li><a href="#s-goal">Goal and scope of the twin</a></li>
+    <li><a href="#s-repo">Repository layout</a></li>
+    <li><a href="#s-layers">Layers of the code</a></li>
+    <li><a href="#s-offline">Offline pipeline: from a case to a model</a></li>
+    <li><a href="#s-ideas">Key ideas in the code</a></li>
+    <li><a href="#s-cache">Stage cache</a></li>
+    <li><a href="#s-learn">Models, split and evaluation</a></li>
+    <li><a href="#s-live">Live twin</a></li>
+    <li><a href="#s-config">Configuration files</a></li>
+    <li><a href="#s-modules">Module table (generated)</a></li>
+    <li><a href="#s-tests">Tests</a></li>
+    <li><a href="#s-adr">Design decisions (ADRs)</a></li>
+    <li><a href="#s-results">Results at a glance</a></li>
+    <li><a href="#s-extend">How to extend the project</a></li>
+    <li><a href="#s-gaps">Open items and observations</a></li>
+    <li><a href="#s-read">Suggested order to read the code</a></li>
+    <li><a href="#s-process">Discussion process and decisions</a></li>
+    <li><a href="#s-artifacts">Location of the artifacts</a></li>
+  </ol>
+  <div class="toc-buttons">Sections: <button id="open-all" type="button">Open all</button><button id="close-all" type="button">Close all</button>
+  <span class="small">Click the title of a section to open or close it.</span></div>
+</nav>
+
+<!-- ====================================================================== -->
+<details class="sec" open>
+  <summary><h2 id="s-summary">1 &nbsp;Summary</h2></summary>
+  <div class="box take">
+    <p>The project is a digital shadow of one patient under total intravenous anaesthesia (TIVA).
+    It replays real VitalDB cases.
+    It estimates drug concentrations that a monitor cannot show.
+    It forecasts MAP, BIS and HR, and it warns of hypotension.
+    It also suggests a change of the propofol or remifentanil target to the clinician.</p>
+  </div>
+  <p>The code is one Python package, <code>src/digital_twin_engineering</code>, with about 2874 lines.
+  One command line tool, <code>dte</code>, runs all steps.</p>
+  <p>The architecture has three parts:</p>
+  <ol>
+    <li><b>Offline pipeline.</b> It reads VitalDB cases, puts the signals on a causal 1 s grid, runs mechanistic expert models, and makes one row per decision point.
+    Then it trains LightGBM forecasters and suggesters and evaluates them against simple baselines.</li>
+    <li><b>Stage cache.</b> Each stage writes its result per case to <code>data/derived/&lt;stage&gt;/&lt;config hash&gt;/</code>.
+    A change of the configuration computes only the stages that the change touches.</li>
+    <li><b>Live twin.</b> The class <code>live.twin.Twin</code> receives raw records one by one.
+    It uses the same functions as the offline pipeline, so it sees the same features.
+    The MQTT, InfluxDB and Grafana services are only an outline at this time.</li>
+  </ol>
+  <p>The main rule of the design is <b>causality</b>: a feature at time <i>t</i> uses only data that was known at time <i>t</i>.
+  Many parts of the code exist for this rule: the grid with staleness, the dose counter, the pre-dose baseline and the test that compares the live twin with the offline grid.</p>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-goal">2 &nbsp;Goal and scope of the twin</h2></summary>
+  <p>Source: <code>Anaesthesia Digital Twin Project Plan.pdf</code> (12 Nov 2026), <code>README.md</code> and <code>GLOSSARY.md</code>.</p>
+  <ul>
+    <li>The anaesthetist keeps the patient unconscious (BIS 40 to 60) with propofol and remifentanil.</li>
+    <li>These drugs also decrease the blood pressure. MAP below 65 mmHg is related to organ damage after surgery.</li>
+    <li>The twin is a <b>digital shadow</b>: its advice goes to a person, not back to the pumps.</li>
+    <li>The data is VitalDB: 6,388 surgical cases with monitor, BIS and infusion pump tracks.</li>
+    <li>The plan gives these priorities. Must: replay → MQTT → twin → InfluxDB → Grafana, drug model with BIS prediction, hypotension warning 5 min ahead, fidelity panel. Should: online calibration, several rooms. Could: what-if panel, ML correction of the drug model.</li>
+  </ul>
+  <details class="fold"><summary><span class="tag">Glossary</span>Words that the code uses with a special meaning</summary>
+    <table>
+      <thead><tr><th>Term</th><th>Meaning in this project</th></tr></thead>
+      <tbody>
+        <tr><td>Patient / case</td><td>A patient (<code>subjectid</code>) can have several cases. A case (<code>caseid</code>) is one recorded operation.</td></tr>
+        <tr><td>Track</td><td>One time series of one device, for example <code>Solar8000/ART_MBP</code>.</td></tr>
+        <tr><td>Channel</td><td>A logical signal in a canonical unit, for example <code>map</code>. The first available track of its list supplies it.</td></tr>
+        <tr><td>Staleness</td><td>The number of seconds since the last observation of a channel.</td></tr>
+        <tr><td>Expert model</td><td>A mechanistic PK/PD model (PAS or AnestheSIM). Its outputs are inputs to the forecaster. It is not a “mixture of experts”.</td></tr>
+        <tr><td>Expert lookahead / what-if</td><td>The forecast of an expert if the current rates stay the same / if one TCI target changes.</td></tr>
+        <tr><td>Decision point</td><td>A time at which the twin makes forecasts and suggestions (every 30 s in the default configuration).</td></tr>
+        <tr><td>Target / horizon</td><td>What a forecaster predicts / how far ahead.</td></tr>
+        <tr><td>Hypotension event</td><td>MAP below 65 mmHg for 1 min or more.</td></tr>
+        <tr><td>Onset</td><td>A decision point where MAP is not already below 65 mmHg.</td></tr>
+        <tr><td>Intervention</td><td>A sustained change of a pump setting by the clinician (the TCI target, not the rate).</td></tr>
+        <tr><td>Intervention suggestion</td><td>The typical change that a clinician makes now, with its probability. It copies practice. It does not claim to be optimal.</td></tr>
+      </tbody>
+    </table>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-repo">3 &nbsp;Repository layout</h2></summary>
+  <table>
+    <thead><tr><th>Path</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td><code>src/digital_twin_engineering/</code></td><td>The package. All code of the pipeline and the twin.</td></tr>
+      <tr><td><code>src/.../experts/</code></td><td>Mechanistic models: PAS wrapper, AnestheSIM port, pre-dose baseline, the <code>Runner</code>.</td></tr>
+      <tr><td><code>src/.../live/</code></td><td>The live twin and the in-process replayer.</td></tr>
+      <tr><td><code>configs/</code></td><td>Pipeline configurations: <code>default.yaml</code> (full run), <code>smoke.yaml</code> (30 s check).</td></tr>
+      <tr><td><code>cohorts/</code></td><td>Cohort definitions: <code>tiva-artline.yaml</code> (1,585 cases), <code>smoke.yaml</code> (about 12 cases).</td></tr>
+      <tr><td><code>docs/adr/</code></td><td>Four architecture decision records.</td></tr>
+      <tr><td><code>docs/results.md</code></td><td>Metrics of the run <code>fourth</code> and of the ablation.</td></tr>
+      <tr><td><code>tests/</code></td><td>pytest tests for channels, labels, experts, AnestheSIM, suggestion and the live twin.</td></tr>
+      <tr><td><code>GLOSSARY.md</code></td><td>The project words (see section 2).</td></tr>
+      <tr><td><code>docker-compose.yml</code></td><td>Outline of the live stack: Mosquitto, InfluxDB, Grafana.</td></tr>
+      <tr><td><code>download_vitaldb_daemon.sh</code></td><td>Downloads all of VitalDB (about 95 GB) as a systemd user service.</td></tr>
+      <tr><td><code>pyproject.toml</code>, <code>uv.lock</code></td><td>Python ≥ 3.14, uv. Two scripts: <code>dte</code> and <code>vitaldb-cache</code>. PAS comes from a git commit.</td></tr>
+      <tr><td><code>data/</code> (not in git)</td><td><code>data/vitaldb/</code>: local mirror of PhysioNet VitalDB. <code>data/derived/</code>: stage cache.</td></tr>
+      <tr><td><code>models/</code> (not in git)</td><td>One folder per training run: <code>models.joblib</code>, <code>metrics.json</code>, <code>config.json</code>, <code>test_cases.json</code>.</td></tr>
+    </tbody>
+  </table>
+  <div class="box warn"><p>On this machine, <code>data/</code> and <code>models/</code> do not exist.
+  This report did not run the pipeline. All numbers come from <code>docs/results.md</code>.</p></div>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-layers">4 &nbsp;Layers of the code</h2></summary>
+  <p>The figure shows the modules in layers.
+  A layer uses mostly the layers above it.
+  Exception: <code>config.py</code> reads <code>channels</code> and <code>experts</code> to find all the channels that the experts need.</p>
+  <p class="legend">
+    <span><i style="background:#8b919c;border-color:#8b919c"></i>entry points</span>
+    <span><i style="background:#6aa8f0;border-color:#6aa8f0"></i>data access</span>
+    <span><i style="background:#3fc795;border-color:#3fc795"></i>signals and case sets</span>
+    <span><i style="background:#f0b429;border-color:#f0b429"></i>experts and labels</span>
+    <span><i style="background:#a597f5;border-color:#a597f5"></i>rows and learning</span>
+    <span><i style="background:#f06b6a;border-color:#f06b6a"></i>live</span>
+  </p>
+  <figure>
+    <svg viewBox="0 0 920 480" role="img" aria-label="Layers of the package">
+      <!-- row labels -->
+      <text x="12" y="47"  class="hd">Entry points</text>
+      <text x="12" y="113" class="hd">Foundation</text>
+      <text x="12" y="179" class="hd">Signals, case sets</text>
+      <text x="12" y="245" class="hd">Experts, labels</text>
+      <text x="12" y="311" class="hd">Rows</text>
+      <text x="12" y="377" class="hd">Learning, evaluation</text>
+      <text x="12" y="443" class="hd">Live</text>
+
+      <!-- row 0: entry points (2 boxes, w 360) -->
+      <rect class="b-cli" x="170" y="18"  width="360" height="50" rx="5"/>
+      <text x="350" y="39" text-anchor="middle" class="hd">cli.py → dte</text>
+      <text x="350" y="57" text-anchor="middle" class="sm">9 sub-commands: inventory, cohort, verify, train, replay …</text>
+      <rect class="b-cli" x="540" y="18"  width="360" height="50" rx="5"/>
+      <text x="720" y="39" text-anchor="middle" class="hd">vitaldb_cache.main → vitaldb-cache</text>
+      <text x="720" y="57" text-anchor="middle" class="sm">download the dataset, check SHA256</text>
+
+      <!-- row 1: foundation (4 boxes, w 175) -->
+      <rect class="b-data" x="170" y="84" width="175" height="50" rx="5"/>
+      <text x="257" y="105" text-anchor="middle" class="hd">vitaldb_cache</text>
+      <text x="257" y="123" text-anchor="middle" class="sm">local VitalDB mirror</text>
+      <rect class="b-data" x="355" y="84" width="175" height="50" rx="5"/>
+      <text x="442" y="105" text-anchor="middle" class="hd">patients</text>
+      <text x="442" y="123" text-anchor="middle" class="sm">clinical_data, covariates</text>
+      <rect class="b-data" x="540" y="84" width="175" height="50" rx="5"/>
+      <text x="627" y="105" text-anchor="middle" class="hd">stages</text>
+      <text x="627" y="123" text-anchor="middle" class="sm">per-case cache, config hash</text>
+      <rect class="b-data" x="725" y="84" width="175" height="50" rx="5"/>
+      <text x="812" y="105" text-anchor="middle" class="hd">config</text>
+      <text x="812" y="123" text-anchor="middle" class="sm">YAML → Config, cache keys</text>
+
+      <!-- row 2: signals and case sets (3 boxes, w 236) -->
+      <rect class="b-sig" x="170" y="150" width="236" height="50" rx="5"/>
+      <text x="288" y="171" text-anchor="middle" class="hd">channels</text>
+      <text x="288" y="189" text-anchor="middle" class="sm">tracks → 1 s grid + staleness, DoseCounter</text>
+      <rect class="b-sig" x="416" y="150" width="236" height="50" rx="5"/>
+      <text x="534" y="171" text-anchor="middle" class="hd">inventory</text>
+      <text x="534" y="189" text-anchor="middle" class="sm">tracks and drugs given, per case</text>
+      <rect class="b-sig" x="662" y="150" width="236" height="50" rx="5"/>
+      <text x="780" y="171" text-anchor="middle" class="hd">cohort</text>
+      <text x="780" y="189" text-anchor="middle" class="sm">YAML criteria → frozen case list</text>
+
+      <!-- row 3: experts and labels (6 boxes, w 113) -->
+      <rect class="b-model" x="170" y="216" width="113" height="50" rx="5"/>
+      <text x="226" y="237" text-anchor="middle" class="hd">experts</text>
+      <text x="226" y="255" text-anchor="middle" class="sm">Runner, run</text>
+      <rect class="b-model" x="293" y="216" width="113" height="50" rx="5"/>
+      <text x="349" y="237" text-anchor="middle" class="hd">experts.pas</text>
+      <text x="349" y="255" text-anchor="middle" class="sm">PAS wrapper</text>
+      <rect class="b-model" x="416" y="216" width="113" height="50" rx="5"/>
+      <text x="472" y="237" text-anchor="middle" class="hd">…anesthesim</text>
+      <text x="472" y="255" text-anchor="middle" class="sm">port, TCI, what-if</text>
+      <rect class="b-model" x="539" y="216" width="113" height="50" rx="5"/>
+      <text x="595" y="237" text-anchor="middle" class="hd">…baseline</text>
+      <text x="595" y="255" text-anchor="middle" class="sm">pre-dose MAP, HR</text>
+      <rect class="b-model" x="662" y="216" width="113" height="50" rx="5"/>
+      <text x="718" y="237" text-anchor="middle" class="hd">labels</text>
+      <text x="718" y="255" text-anchor="middle" class="sm">hypotension, interv.</text>
+      <rect class="b-model" x="785" y="216" width="113" height="50" rx="5"/>
+      <text x="841" y="237" text-anchor="middle" class="hd">targets</text>
+      <text x="841" y="255" text-anchor="middle" class="sm">y.&lt;target&gt;@&lt;h&gt;</text>
+
+      <!-- row 4: rows (2 boxes, w 360) -->
+      <rect class="b-learn" x="170" y="282" width="360" height="50" rx="5"/>
+      <text x="350" y="303" text-anchor="middle" class="hd">features</text>
+      <text x="350" y="321" text-anchor="middle" class="sm">look-back windows → x.* columns (offline and live)</text>
+      <rect class="b-learn" x="540" y="282" width="360" height="50" rx="5"/>
+      <text x="720" y="303" text-anchor="middle" class="hd">dataset</text>
+      <text x="720" y="321" text-anchor="middle" class="sm">case frame → decision-point rows (cached)</text>
+
+      <!-- row 5: learning and evaluation (7 boxes, w 95) -->
+      <rect class="b-learn" x="170" y="348" width="95" height="50" rx="5"/>
+      <text x="217" y="369" text-anchor="middle" class="hd">splits</text>
+      <text x="217" y="387" text-anchor="middle" class="sm">by patient</text>
+      <rect class="b-learn" x="275" y="348" width="95" height="50" rx="5"/>
+      <text x="322" y="369" text-anchor="middle" class="hd">forecasting</text>
+      <text x="322" y="387" text-anchor="middle" class="sm">LightGBM, OOF</text>
+      <rect class="b-learn" x="380" y="348" width="95" height="50" rx="5"/>
+      <text x="427" y="369" text-anchor="middle" class="hd">suggestion</text>
+      <text x="427" y="387" text-anchor="middle" class="sm">per drug</text>
+      <rect class="b-learn" x="485" y="348" width="95" height="50" rx="5"/>
+      <text x="532" y="369" text-anchor="middle" class="hd">pipeline</text>
+      <text x="532" y="387" text-anchor="middle" class="sm">dte train</text>
+      <rect class="b-learn" x="590" y="348" width="95" height="50" rx="5"/>
+      <text x="637" y="369" text-anchor="middle" class="hd">evaluation</text>
+      <text x="637" y="387" text-anchor="middle" class="sm">vs baselines</text>
+      <rect class="b-learn" x="695" y="348" width="95" height="50" rx="5"/>
+      <text x="742" y="369" text-anchor="middle" class="hd">ablation</text>
+      <text x="742" y="387" text-anchor="middle" class="sm">dte ablate</text>
+      <rect class="b-learn" x="800" y="348" width="98" height="50" rx="5"/>
+      <text x="849" y="369" text-anchor="middle" class="hd">verification</text>
+      <text x="849" y="387" text-anchor="middle" class="sm">dte verify</text>
+
+      <!-- row 6: live (3 boxes, w 236) -->
+      <rect class="b-live" x="170" y="414" width="236" height="50" rx="5"/>
+      <text x="288" y="435" text-anchor="middle" class="hd">live.twin.Twin</text>
+      <text x="288" y="453" text-anchor="middle" class="sm">observe → tick → decide</text>
+      <rect class="b-live" x="416" y="414" width="236" height="50" rx="5"/>
+      <text x="534" y="435" text-anchor="middle" class="hd">live.replayer</text>
+      <text x="534" y="453" text-anchor="middle" class="sm">dte replay (in process); MQTT: TODO</text>
+      <rect class="b-live" x="662" y="414" width="236" height="50" rx="5" stroke-dasharray="5 4"/>
+      <text x="780" y="435" text-anchor="middle" class="hd">docker-compose.yml</text>
+      <text x="780" y="453" text-anchor="middle" class="sm">Mosquitto, InfluxDB, Grafana (outline)</text>
+    </svg>
+    <figcaption>Figure 1. Modules of <code>src/digital_twin_engineering</code> in layers. A dashed border shows a part that is only an outline.
+    Section 11 lists the real imports of each module.</figcaption>
+  </figure>
+  <details class="fold"><summary><span class="tag">Detail</span>What each layer does</summary>
+    <ul>
+      <li><b>Entry points.</b> <code>cli.py</code> parses the sub-command and calls one function of a lower module. It has no logic of its own.</li>
+      <li><b>Foundation.</b> <code>vitaldb_cache</code> downloads PhysioNet files on first use and checks them with <code>SHA256SUMS.txt</code>. <code>patients</code> reads <code>clinical_data</code> (age, sex, height, weight, BMI, ASA). <code>stages</code> keeps per-case results on disk. <code>config</code> turns a YAML file into a frozen <code>Config</code> dataclass and makes the cache keys.</li>
+      <li><b>Signals and case sets.</b> <code>channels</code> defines 23 channels and the causal grid. <code>inventory</code> scans all cases once. <code>cohort</code> selects cases from YAML criteria.</li>
+      <li><b>Experts and labels.</b> The expert models step through a case one second at a time. <code>labels</code> and <code>targets</code> look at the full case (also the future), so they make only training labels.</li>
+      <li><b>Rows.</b> <code>features</code> makes the forecaster inputs with look-back windows. <code>dataset</code> joins everything into one row per decision point.</li>
+      <li><b>Learning and evaluation.</b> Forecasters, suggesters, the patient split, the metrics, the ablation and the expert fidelity check.</li>
+      <li><b>Live.</b> The twin and a replayer. They reuse the modules above without change.</li>
+    </ul>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-offline">5 &nbsp;Offline pipeline: from a case to a model</h2></summary>
+  <p>The commands below are from <code>README.md</code>. Run them in this order.</p>
+<pre><code>uv run dte inventory                         # once: tracks and drugs given per case (~12 min)
+uv run dte coverage                          # share of cases with each channel
+uv run dte explore map bis hr propofol_dose --by department optype
+uv run dte cohort cohorts/tiva-artline.yaml  # freeze the case list
+uv run dte verify configs/default.yaml cohorts/smoke.yaml
+uv run dte train  configs/default.yaml cohorts/tiva-artline.yaml --run first
+uv run dte ablate configs/default.yaml cohorts/tiva-artline.yaml --run ablation
+uv run dte replay 13 --run smoke             # one case through the live twin</code></pre>
+  <figure>
+    <svg viewBox="0 0 920 420" role="img" aria-label="Offline data flow">
+      <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3b0a8"/></marker></defs>
+      <style>#f2 .arrow { marker-end: url(#ah2); }</style>
+      <g id="f2">
+      <!-- row A -->
+      <rect class="b-data" x="20"  y="20" width="190" height="84" rx="5"/>
+      <text x="115" y="44" text-anchor="middle" class="hd">VitalDB cache</text>
+      <text x="115" y="64" text-anchor="middle" class="sm">data/vitaldb/*.vital</text>
+      <text x="115" y="80" text-anchor="middle" class="sm">clinical_data</text>
+      <rect class="b-sig" x="250" y="20" width="190" height="84" rx="5"/>
+      <text x="345" y="44" text-anchor="middle" class="hd">channels.load_channels</text>
+      <text x="345" y="64" text-anchor="middle" class="sm">1 s grid, last value + staleness</text>
+      <text x="345" y="80" text-anchor="middle" class="sm">cache: derived/channels/</text>
+      <rect class="b-model" x="480" y="20" width="190" height="84" rx="5"/>
+      <text x="575" y="44" text-anchor="middle" class="hd">experts.run</text>
+      <text x="575" y="64" text-anchor="middle" class="sm">5 experts, signals, lookaheads</text>
+      <text x="575" y="80" text-anchor="middle" class="sm">cache: derived/experts/ (each)</text>
+      <rect class="b-learn" x="710" y="20" width="190" height="84" rx="5"/>
+      <text x="805" y="44" text-anchor="middle" class="hd">dataset.case_frame</text>
+      <text x="805" y="64" text-anchor="middle" class="sm">channels ⨝ expert signals</text>
+      <text x="805" y="80" text-anchor="middle" class="sm">(1 row per second)</text>
+      <path class="arrow" d="M210,62 L248,62"/>
+      <path class="arrow" d="M440,62 L478,62"/>
+      <path class="arrow" d="M670,62 L708,62"/>
+      <path class="arrow" d="M805,104 L805,124 L115,124 L115,148"/>
+
+      <!-- row B -->
+      <rect class="b-learn" x="20"  y="150" width="190" height="84" rx="5"/>
+      <text x="115" y="174" text-anchor="middle" class="hd">decision_points</text>
+      <text x="115" y="194" text-anchor="middle" class="sm">every 30 s, from anaesthesia</text>
+      <text x="115" y="210" text-anchor="middle" class="sm">start to end</text>
+      <rect class="b-learn" x="250" y="150" width="190" height="84" rx="5"/>
+      <text x="345" y="174" text-anchor="middle" class="hd">features → x.*</text>
+      <text x="345" y="194" text-anchor="middle" class="sm">windows 60/300/900/1800 s</text>
+      <text x="345" y="210" text-anchor="middle" class="sm">+ covariates + phase</text>
+      <rect class="b-model" x="480" y="150" width="190" height="84" rx="5"/>
+      <text x="575" y="174" text-anchor="middle" class="hd">labels → y.*</text>
+      <text x="575" y="194" text-anchor="middle" class="sm">y.map@300, y.hypotension@60 …</text>
+      <text x="575" y="210" text-anchor="middle" class="sm">y.suggest.&lt;drug&gt;.direction/new</text>
+      <rect class="b-learn" x="710" y="150" width="190" height="84" rx="5"/>
+      <text x="805" y="174" text-anchor="middle" class="hd">dataset.case_rows</text>
+      <text x="805" y="194" text-anchor="middle" class="sm">clean and perturbed rows</text>
+      <text x="805" y="210" text-anchor="middle" class="sm">cache: derived/rows/</text>
+      <path class="arrow" d="M210,192 L248,192"/>
+      <path class="arrow" d="M440,192 L478,192"/>
+      <path class="arrow" d="M670,192 L708,192"/>
+      <path class="arrow" d="M805,234 L805,254 L115,254 L115,278"/>
+
+      <!-- row C -->
+      <rect class="b-learn" x="20"  y="280" width="190" height="84" rx="5"/>
+      <text x="115" y="304" text-anchor="middle" class="hd">pipeline.split</text>
+      <text x="115" y="324" text-anchor="middle" class="sm">80/20 by patient</text>
+      <text x="115" y="340" text-anchor="middle" class="sm">½ train patients perturbed</text>
+      <rect class="b-learn" x="250" y="280" width="190" height="84" rx="5"/>
+      <text x="345" y="304" text-anchor="middle" class="hd">forecasting</text>
+      <text x="345" y="324" text-anchor="middle" class="sm">1 LightGBM per (target, h)</text>
+      <text x="345" y="340" text-anchor="middle" class="sm">out-of-fold → f.* columns</text>
+      <rect class="b-learn" x="480" y="280" width="190" height="84" rx="5"/>
+      <text x="575" y="304" text-anchor="middle" class="hd">suggestion</text>
+      <text x="575" y="324" text-anchor="middle" class="sm">per drug: classifier (3 classes)</text>
+      <text x="575" y="340" text-anchor="middle" class="sm">+ 2 regressors (new setting)</text>
+      <rect class="b-out" x="710" y="280" width="190" height="84" rx="5"/>
+      <text x="805" y="304" text-anchor="middle" class="hd">evaluation → models/&lt;run&gt;/</text>
+      <text x="805" y="324" text-anchor="middle" class="sm">metrics.json, models.joblib</text>
+      <text x="805" y="340" text-anchor="middle" class="sm">config.json, test_cases.json</text>
+      <path class="arrow" d="M210,322 L248,322"/>
+      <path class="arrow" d="M440,322 L478,322"/>
+      <path class="arrow" d="M670,322 L708,322"/>
+      <text x="20" y="400" class="sm">Order of the code: pipeline.train → dataset.build (process pool, 16 jobs) → case_rows → case_frame → case_channels / expert_signals → stages.cached.</text>
+      </g>
+    </svg>
+    <figcaption>Figure 2. Data flow of <code>dte train</code>. The first two rows run per case and in parallel. The third row runs on all rows together.</figcaption>
+  </figure>
+
+  <details class="sec sub">
+    <summary><h3 id="s-offline-rows">5.1 &nbsp;Columns of one row</h3></summary>
+    <p>One row is one decision point of one case. The prefix of a column name tells its role.</p>
+    <table>
+      <thead><tr><th>Prefix</th><th>Role</th><th>Examples</th></tr></thead>
+      <tbody>
+        <tr><td>(none)</td><td>Identity</td><td><code>caseid</code>, <code>subjectid</code>, <code>t</code></td></tr>
+        <tr><td><code>x.</code></td><td>Forecaster input. It uses only the past.</td><td><code>x.map</code>, <code>x.map.mean300</code>, <code>x.bis__staleness</code>, <code>x.asim_greco.bis@300</code>, <code>x.age</code>, <code>x.surgery</code></td></tr>
+        <tr><td><code>y.</code></td><td>Label. It uses the future. Never an input.</td><td><code>y.map@300</code>, <code>y.hypotension@600</code>, <code>y.suggest.propofol.direction</code></td></tr>
+        <tr><td><code>f.</code></td><td>Forecast of a trained forecaster. Input to the suggesters.</td><td><code>f.map@300</code>, <code>f.hypotension@300</code></td></tr>
+      </tbody>
+    </table>
+    <p>The default configuration gives about 733 <code>x.</code> columns (see the ablation table in <code>docs/results.md</code>).</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-offline-perturb">5.2 &nbsp;Clean rows and perturbed rows</h3></summary>
+    <p><code>dataset.case_rows(perturbed=True)</code> takes the features from a frame with simulated sensor faults.
+    It takes the labels from the clean frame.</p>
+    <p>The faults are in <code>channels.Perturbation</code>: an extra delay of 0 to 10 s per channel and about 4 dropouts per hour of about 30 s.
+    They apply only to “level” channels (vitals), not to pump settings or doses.</p>
+    <p>The seed of a fault depends on the case and the channel name only.
+    So the same channel gets the same fault, also when other channels change.</p>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-ideas">6 &nbsp;Key ideas in the code</h2></summary>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-grid">6.1 &nbsp;Causal grid with staleness (<code>channels.py</code>)</h3></summary>
+    <ul>
+      <li>A <code>Channel</code> has a name, a kind (<code>level</code>, <code>setting</code> or <code>dose</code>), a unit, a list of candidate tracks with a unit factor, a valid range and a maximum staleness.</li>
+      <li><code>resolve</code> selects the first candidate track that the case has.</li>
+      <li><code>to_grid</code> puts the raw records on the 1 s grid. Each cell holds the last value at or before that second. The code never interpolates.</li>
+      <li>Each channel gets a second column <code>&lt;channel&gt;__staleness</code>: seconds since the observation.</li>
+      <li>Values outside the valid range are removed first. Thus an artefact shows as a growing staleness.</li>
+      <li>When the staleness is more than <code>max_staleness_s</code> (300 s for most vitals), the value becomes NaN.</li>
+    </ul>
+    <p>Why: interpolation uses the next observation, so it leaks the future. It also hides gaps that the live twin will see. (ADR 0002.)</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-dose">6.2 &nbsp;Dose counter (<code>channels.DoseCounter</code>)</h3></summary>
+    <p>A pump records a cumulative volume (<code>*_VOL</code>, mL). The raw data has three problems:</p>
+    <ol>
+      <li>Small decreases of about 0.2 mL (jitter).</li>
+      <li>Resets when a syringe or pump restarts, not always to zero.</li>
+      <li>Single wild values, for example 249037.83 mL between two values near 13 mL.</li>
+    </ol>
+    <p>The counter accepts a rise only if a pump can deliver it (maximum 1200 mL/h).
+    It ignores small decreases.
+    It keeps a large jump as “pending” until 5 more readings arrive.
+    If the jump stays, the counter starts again from the new level (a re-base). If not, it ignores the jump.</p>
+    <p>Consequence: after a jump, the dose total becomes known up to 5 readings late.
+    The grid uses the time when the value became known, not the time of the reading.
+    The live twin uses the same counter, so offline and live agree.</p>
+    <p>On the grid, a dose channel holds the amount for each step (difference of the total), in mg or µg.</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-experts">6.3 &nbsp;Expert models (<code>experts/</code>)</h3></summary>
+    <p>An expert follows the protocol <code>Expert</code>: <code>name</code>, <code>inputs</code>, <code>signals</code>, <code>reset(covariates, step_s)</code>, <code>step(inputs)</code>.
+    <code>experts.build(spec)</code> makes an expert from a dictionary of the YAML file. The key <code>kind</code> selects the class.</p>
+    <table>
+      <thead><tr><th>Kind</th><th>Class</th><th>Models</th><th>Signals</th><th>Lookahead</th></tr></thead>
+      <tbody>
+        <tr><td><code>pas</code></td><td><code>PasExpert</code></td><td>Python Anesthesia Simulator: Marsh_modified / Schnider / Eleveld propofol, Minto / Eleveld remifentanil, Bouillon / Eleveld BIS, VitalDB haemodynamics</td><td>propofol_ce, remifentanil_ce, bis, map, hr, co</td><td>No (too slow)</td></tr>
+        <tr><td><code>anesthesim</code></td><td><code>AnestheSimExpert</code></td><td>Port of AnestheSIM 1.0.0 (MATLAB): Schnider, Minto, Joachim norepinephrine, volatile effect sites; BIS surface greco/bouillon/minto; MAP separable or unified</td><td>Cp and Ce of each drug, volatile MAC, bis, map, hr</td><td>Yes, and what-if</td></tr>
+      </tbody>
+    </table>
+    <ul>
+      <li><code>Runner</code> drives one expert one step at a time. It sets a missing dose to 0. The offline <code>experts.run</code> and the live twin use the same <code>Runner</code>.</li>
+      <li>With <code>baseline: pre_dose</code>, the expert takes the resting MAP and HR from the median of the observations before the first dose (<code>experts/baseline.py</code>). MAP comes from the cuff (NIBP), because the arterial line is often not ready before induction.</li>
+      <li>The AnestheSIM port uses an exact zero-order-hold matrix step (<code>scipy.linalg.expm</code>) in place of an ODE solver. This makes it fast.</li>
+    </ul>
+    <details class="fold"><summary><span class="tag">Detail</span>Lookahead and what-if</summary>
+      <ul>
+        <li>At each decision point, the <code>Runner</code> asks the expert for its state after 120 s and 300 s. It holds each dose at its mean of the last 60 s.</li>
+        <li>The expert copies its state, simulates ahead, then restores the state. Columns: <code>&lt;expert&gt;.&lt;signal&gt;@&lt;h&gt;</code>.</li>
+        <li>With <code>whatif: [0.8, 1.2]</code>, AnestheSIM also simulates each TCI target × 0.8, × 1 and × 1.2. Its own TCI controller (<code>_tci_rate</code>) steers the effect-site concentration to the new target, as a real TCI pump does.</li>
+        <li>The feature is the effect: what-if minus the × 1 scenario.</li>
+        <li>In the live twin, <code>Runner.effect</code> uses the same method for the suggested new setting.</li>
+      </ul>
+    </details>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-labels">6.4 &nbsp;Labels and targets (<code>labels.py</code>, <code>targets.py</code>)</h3></summary>
+    <ul>
+      <li><b>Value target</b> (map, bis, hr): the value one horizon ahead. The future observation must be fresh (staleness ≤ 10 s). Else the label is NaN.</li>
+      <li><b>Event target</b> (hypotension): 1 if an event occurs at any time in (t, t + horizon].
+      An event is MAP (5 s median) below 65 mmHg for 60 s or more. Missing MAP never counts as low.</li>
+      <li><b>Intervention</b>: a change of the TCI target that holds for 30 s or more and is 5 % or more.
+      A short value while the knob turns (3 → 3.5 → 4) is not an intervention.
+      A pump start is an intervention.</li>
+      <li><b>Suggestion label</b>: the direction (decrease, hold, increase) and the new value of the first intervention in the 60 s after the decision point.</li>
+    </ul>
+    <p>To add a vital as a target, add one <code>Target</code> to <code>TARGETS</code> and its name to <code>targets:</code> in the YAML.</p>
+  </details>
+
+  <details class="sec sub">
+    <summary><h3 id="s-ideas-features">6.5 &nbsp;Features (<code>features.py</code>)</h3></summary>
+    <p><code>window_features</code> makes the <code>x.</code> columns. All windows look back only.</p>
+    <table>
+      <thead><tr><th>Column type</th><th>Features</th></tr></thead>
+      <tbody>
+        <tr><td>Level or setting channel</td><td>last value; per window: mean, min, max, std, slope</td></tr>
+        <tr><td>Expert signal</td><td>last value; per window: mean, slope</td></tr>
+        <tr><td>Expert lookahead</td><td>the value and the change from the current value</td></tr>
+        <tr><td>What-if</td><td>the effect: the difference from the × 1 scenario</td></tr>
+        <tr><td>Dose channel</td><td>sum per window (amount given)</td></tr>
+        <tr><td>Staleness column</td><td>the current value only</td></tr>
+        <tr><td>Patient</td><td>age, male, height, weight, BMI, ASA</td></tr>
+        <tr><td>Phase</td><td>seconds since anaesthesia start; surgery under way (0/1)</td></tr>
+      </tbody>
+    </table>
+    <p>The live twin calls the same function on its rolling buffer.</p>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-cache">7 &nbsp;Stage cache (<code>stages.py</code>)</h2></summary>
+  <p>Each stage writes one Parquet file per case:</p>
+<pre><code>data/derived/&lt;stage&gt;/&lt;config hash&gt;/&lt;caseid:04d&gt;.parquet
+data/derived/&lt;stage&gt;/&lt;config hash&gt;/config.json      # the config that made the hash</code></pre>
+  <table>
+    <thead><tr><th>Stage</th><th>Key (from <code>Config</code>)</th><th>Version</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td><code>channels</code></td><td><code>channels_key</code>: all channels, step, perturbation, seed</td><td>2</td><td>Grid of all channels and staleness</td></tr>
+      <tr><td><code>experts</code></td><td><code>expert_key</code>: one expert spec, its class version, step, perturbation, seed, lookahead</td><td>2</td><td>Signals of one expert (one folder per expert)</td></tr>
+      <tr><td><code>rows</code></td><td><code>rows_key</code>: the two keys above, targets, horizons, decision interval, features, suggestion</td><td>7</td><td>Decision-point rows of one case</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>The hash is SHA-256 of the key and the stage version (12 hex digits).</li>
+    <li>The cache cannot see changes of the code. When a change alters a result, increase the number in <code>stages.VERSIONS</code>. Also increase the numbers of the stages that depend on it.</li>
+    <li>An expert class can have its own <code>version</code> (AnestheSIM has 1). A change then recomputes only experts of that kind.</li>
+    <li>A write goes to a <code>.part</code> file first and then moves. Thus parallel processes do not see half files.</li>
+    <li><code>inventory</code> and <code>cohort</code> also write to <code>data/derived/</code>: <code>track_inventory.parquet</code>, <code>drug_usage.parquet</code> and the frozen cohort manifests.</li>
+  </ul>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-learn">8 &nbsp;Models, split and evaluation</h2></summary>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-split">8.1 &nbsp;Split (<code>splits.py</code>, <code>pipeline.split</code>)</h3></summary>
+    <ul>
+      <li>The split is by patient (<code>subjectid</code>), never by row or case. 80 % of the patients train, 20 % test.</li>
+      <li>With a perturbation, half of the training patients come from the perturbed rows. Each patient is in the training set once.</li>
+      <li>The test has two sets: <code>clean</code> and <code>perturbed</code> (the same test patients with sensor faults).</li>
+      <li>Cross-validation uses <code>GroupKFold</code> by patient, 5 folds.</li>
+    </ul>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-stack">8.2 &nbsp;Two levels of models</h3></summary>
+    <figure>
+      <svg viewBox="0 0 920 190" role="img" aria-label="Forecasters feed the suggesters">
+        <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3b0a8"/></marker></defs>
+        <style>#f3 .arrow { marker-end: url(#ah3); }</style>
+        <g id="f3">
+        <rect class="b-learn" x="20" y="50" width="170" height="80" rx="5"/>
+        <text x="105" y="80" text-anchor="middle" class="hd">x.* features</text>
+        <text x="105" y="100" text-anchor="middle" class="sm">~733 columns</text>
+        <rect class="b-learn" x="240" y="30" width="200" height="120" rx="5"/>
+        <text x="340" y="58" text-anchor="middle" class="hd">Forecasters</text>
+        <text x="340" y="80" text-anchor="middle" class="sm">1 LightGBM per (target, horizon)</text>
+        <text x="340" y="98" text-anchor="middle" class="sm">4 targets × 4 horizons = 16</text>
+        <text x="340" y="116" text-anchor="middle" class="sm">value: regressor</text>
+        <text x="340" y="134" text-anchor="middle" class="sm">hypotension: classifier</text>
+        <rect class="b-learn" x="490" y="50" width="150" height="80" rx="5"/>
+        <text x="565" y="80" text-anchor="middle" class="hd">f.* forecasts</text>
+        <text x="565" y="100" text-anchor="middle" class="sm">out-of-fold on train</text>
+        <rect class="b-learn" x="690" y="30" width="210" height="120" rx="5"/>
+        <text x="795" y="58" text-anchor="middle" class="hd">Suggesters (per drug)</text>
+        <text x="795" y="80" text-anchor="middle" class="sm">isotonic-calibrated classifier</text>
+        <text x="795" y="98" text-anchor="middle" class="sm">→ p_decrease / p_hold / p_increase</text>
+        <text x="795" y="116" text-anchor="middle" class="sm">2 regressors</text>
+        <text x="795" y="134" text-anchor="middle" class="sm">→ setting_decrease / _increase</text>
+        <path class="arrow" d="M190,90 L238,90"/>
+        <path class="arrow" d="M440,90 L488,90"/>
+        <path class="arrow" d="M640,90 L688,90"/>
+        <path class="arrow dash" d="M105,50 L105,14 L795,14 L795,28"/>
+        <text x="450" y="10" text-anchor="middle" class="sm">x.* also go directly to the suggesters</text>
+        </g>
+      </svg>
+      <figcaption>Figure 3. The forecasts are inputs of the suggesters (stacking). A predicted hypotension can thus drive a suggested decrease.</figcaption>
+    </figure>
+    <ul>
+      <li><code>forecasting.fit_with_out_of_fold</code> trains one model per fold and predicts the rows of the patients that the model did not see.
+      The suggesters train on these predictions. So they learn how much they can trust a forecast on a new patient.</li>
+      <li>Then a final forecaster trains on all training rows. It predicts the test rows.</li>
+      <li>LightGBM accepts NaN. Missing channels and experts that do not apply leave NaN.</li>
+      <li>The default parameters are in <code>configs/default.yaml</code> under <code>model:</code> (400 trees, learning rate 0.03, 30 % of the features per tree).</li>
+      <li>The regressor of the suggester clips the result: a decrease stays at or below the current setting, an increase at or above.</li>
+    </ul>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-eval">8.3 &nbsp;Evaluation (<code>evaluation.py</code>)</h3></summary>
+    <p>Each model has a baseline that does not learn:</p>
+    <table>
+      <thead><tr><th>Model</th><th>Metrics</th><th>Baseline</th></tr></thead>
+      <tbody>
+        <tr><td>Value forecaster</td><td>MAE, RMSE</td><td>Persistence (the current value stays)</td></tr>
+        <tr><td>Hypotension forecaster</td><td>AUROC, AUPRC, sensitivity at 10 % alert rate, Brier, ECE; also on onsets only</td><td>“MAP already low” (score = −current MAP)</td></tr>
+        <tr><td>Suggester</td><td>log loss, AUROC per direction, ECE; MAE of the new setting</td><td>Class prior; “keep the current setting”</td></tr>
+      </tbody>
+    </table>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-learn-other">8.4 &nbsp;Ablation and verification</h3></summary>
+    <ul>
+      <li><code>ablation.run</code> trains the forecasters again without one group of inputs: no experts, only one expert, no staleness, no covariates, no phase. Output: <code>models/&lt;run&gt;/ablation.json</code>.</li>
+      <li><code>verification.fidelity</code> compares each expert with reality, per case, with Varvel metrics (MDPE, MDAPE, RMSE).
+      Concentrations go against the pump's own TCI model (<code>propofol_ce_pump</code>). BIS and MAP go against the monitor.
+      Only fresh values (staleness ≤ 5 s) during anaesthesia count.</li>
+    </ul>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-live">9 &nbsp;Live twin (<code>live/</code>)</h2></summary>
+  <figure>
+    <svg viewBox="0 0 920 330" role="img" aria-label="Live twin">
+      <defs><marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3b0a8"/></marker></defs>
+      <style>#f4 .arrow { marker-end: url(#ah4); }</style>
+      <g id="f4">
+      <rect class="b-live" x="20" y="20" width="190" height="84" rx="5"/>
+      <text x="115" y="44" text-anchor="middle" class="hd">replayer.records</text>
+      <text x="115" y="64" text-anchor="middle" class="sm">raw (t, track, value)</text>
+      <text x="115" y="80" text-anchor="middle" class="sm">all tracks merged by time</text>
+      <rect class="b-live" x="250" y="20" width="190" height="84" rx="5"/>
+      <text x="345" y="44" text-anchor="middle" class="hd">Twin.observe</text>
+      <text x="345" y="64" text-anchor="middle" class="sm">last value per channel</text>
+      <text x="345" y="80" text-anchor="middle" class="sm">DoseCounter per pump</text>
+      <rect class="b-live" x="480" y="20" width="190" height="84" rx="5"/>
+      <text x="575" y="44" text-anchor="middle" class="hd">Twin.tick(t), every 1 s</text>
+      <text x="575" y="64" text-anchor="middle" class="sm">_grid_row + staleness</text>
+      <text x="575" y="80" text-anchor="middle" class="sm">Runner.step per expert</text>
+      <rect class="b-live" x="710" y="20" width="190" height="84" rx="5"/>
+      <text x="805" y="44" text-anchor="middle" class="hd">buffer</text>
+      <text x="805" y="64" text-anchor="middle" class="sm">deque of the last 1801 s</text>
+      <text x="805" y="80" text-anchor="middle" class="sm">(longest window + 1)</text>
+      <path class="arrow" d="M210,62 L248,62"/>
+      <path class="arrow" d="M440,62 L478,62"/>
+      <path class="arrow" d="M670,62 L708,62"/>
+      <path class="arrow" d="M805,104 L805,124 L115,124 L115,148"/>
+      <text x="460" y="140" text-anchor="middle" class="sm">at a decision point (t mod 30 s = 0): Twin.decide</text>
+
+      <rect class="b-learn" x="20" y="150" width="190" height="84" rx="5"/>
+      <text x="115" y="174" text-anchor="middle" class="hd">Twin.features</text>
+      <text x="115" y="194" text-anchor="middle" class="sm">window_features on buffer</text>
+      <text x="115" y="210" text-anchor="middle" class="sm">+ covariates + phase</text>
+      <rect class="b-learn" x="250" y="150" width="190" height="84" rx="5"/>
+      <text x="345" y="174" text-anchor="middle" class="hd">forecasters</text>
+      <text x="345" y="194" text-anchor="middle" class="sm">from models.joblib</text>
+      <text x="345" y="210" text-anchor="middle" class="sm">→ f.* into the row</text>
+      <rect class="b-learn" x="480" y="150" width="190" height="84" rx="5"/>
+      <text x="575" y="174" text-anchor="middle" class="hd">suggesters</text>
+      <text x="575" y="194" text-anchor="middle" class="sm">+ Runner.effect (what-if</text>
+      <text x="575" y="210" text-anchor="middle" class="sm">of each suggested setting)</text>
+      <rect class="b-out" x="710" y="150" width="190" height="84" rx="5"/>
+      <text x="805" y="174" text-anchor="middle" class="hd">decision (dict)</text>
+      <text x="805" y="194" text-anchor="middle" class="sm">dte replay: DataFrame,</text>
+      <text x="805" y="210" text-anchor="middle" class="sm">CSV or Parquet</text>
+      <path class="arrow" d="M210,192 L248,192"/>
+      <path class="arrow" d="M440,192 L478,192"/>
+      <path class="arrow" d="M670,192 L708,192"/>
+
+      <rect class="b-cli" x="20" y="260" width="250" height="56" rx="5" stroke-dasharray="5 4"/>
+      <text x="145" y="283" text-anchor="middle" class="hd">Mosquitto (MQTT)</text>
+      <text x="145" y="301" text-anchor="middle" class="sm">twin/&lt;caseid&gt;/track/&lt;dev&gt;/&lt;track&gt;</text>
+      <rect class="b-cli" x="335" y="260" width="250" height="56" rx="5" stroke-dasharray="5 4"/>
+      <text x="460" y="283" text-anchor="middle" class="hd">InfluxDB</text>
+      <text x="460" y="301" text-anchor="middle" class="sm">decisions over time</text>
+      <rect class="b-cli" x="650" y="260" width="250" height="56" rx="5" stroke-dasharray="5 4"/>
+      <text x="775" y="283" text-anchor="middle" class="hd">Grafana</text>
+      <text x="775" y="301" text-anchor="middle" class="sm">dashboard</text>
+      <path class="arrow dash" d="M270,288 L333,288"/>
+      <path class="arrow dash" d="M585,288 L648,288"/>
+      </g>
+    </svg>
+    <figcaption>Figure 4. The live twin. The top two rows exist and run in <code>dte replay</code>. The dashed row is the planned service layer (<code>docker-compose.yml</code>); <code>replay_mqtt</code> raises <code>NotImplementedError</code>.</figcaption>
+  </figure>
+  <ul>
+    <li>The replayer sends <b>raw records</b>, not grid values. The twin makes its own grid. Thus it sees the same data as the offline pipeline.</li>
+    <li><code>tests/test_live.py</code> replays a case with a pump volume jump. It checks that the twin grid is equal to the offline frame.</li>
+    <li>The twin knows the phase times (anaesthesia start, surgery start and end) from VitalDB's EVENT track. In <code>dte replay</code>, they come from <code>clinical_data</code>.</li>
+    <li><code>replayer.load_run(run)</code> reads <code>models/&lt;run&gt;/config.json</code> and <code>models.joblib</code>. So the twin uses the configuration of its training run.</li>
+  </ul>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-config">10 &nbsp;Configuration files</h2></summary>
+  <details class="sec sub">
+    <summary><h3 id="s-config-pipeline">10.1 &nbsp;Pipeline configuration (<code>configs/*.yaml</code> → <code>config.Config</code>)</h3></summary>
+    <table>
+      <thead><tr><th>Field</th><th>Default YAML</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>channels</code></td><td>map, sbp, dbp, hr, bis, sqi, spo2, etco2, 2 × pump Ce</td><td>Channels for the features. <code>Config.all_channels</code> adds the expert inputs and the suggestion settings.</td></tr>
+        <tr><td><code>experts</code></td><td>3 × PAS, 2 × AnestheSIM</td><td>One dictionary per expert. <code>kind</code> selects the class.</td></tr>
+        <tr><td><code>expert_lookahead_s</code></td><td>[120, 300]</td><td>Horizons of the expert lookaheads.</td></tr>
+        <tr><td><code>targets</code>, <code>horizons_s</code></td><td>[map, bis, hr, hypotension], [60, 180, 300, 600]</td><td>One forecaster per pair.</td></tr>
+        <tr><td><code>step_s</code>, <code>decision_every_s</code></td><td>1, 30</td><td>Grid step; interval of decision points (30 s to fit 32 GB RAM).</td></tr>
+        <tr><td><code>features.windows_s</code></td><td>[60, 300, 900, 1800]</td><td>Look-back windows.</td></tr>
+        <tr><td><code>suggestion</code></td><td>drugs, window 60 s, hold 30 s, change 5 %</td><td>Rules of the intervention labels.</td></tr>
+        <tr><td><code>perturbation</code></td><td>delay ≤ 10 s, 4 dropouts/h, 30 s</td><td>Sensor faults for training. <code>null</code>: no perturbed rows.</td></tr>
+        <tr><td><code>model</code></td><td>400 trees, lr 0.03, …</td><td>LightGBM parameters.</td></tr>
+        <tr><td><code>folds</code>, <code>test_fraction</code>, <code>seed</code></td><td>5, 0.2, 0</td><td>Split and cross-validation.</td></tr>
+      </tbody>
+    </table>
+  </details>
+  <details class="sec sub">
+    <summary><h3 id="s-config-cohort">10.2 &nbsp;Cohort (<code>cohorts/*.yaml</code> → <code>cohort.Cohort</code>)</h3></summary>
+<pre><code>name: tiva-artline
+channels: [map, bis, hr, propofol_dose, remifentanil_dose, propofol_target, remifentanil_target]
+where:
+  ane_type: General
+  agents: propofol+remifentanil   # drugs given, not only a track present
+  age: {min: 18}
+min_duration_s: 3600</code></pre>
+    <p>A case must also have age, sex, height and weight.
+    <code>dte cohort</code> writes the case list to a manifest. The training run saves the manifest too.</p>
+  </details>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-modules">11 &nbsp;Module table (generated)</h2></summary>
+  <p><code>build.py</code> makes this table from the source code with the Python <code>ast</code> module.
+  “Imports” lists only the modules of this package, also imports inside functions.
+  The raw data is in <code>evaluation-01/modules.json</code>.</p>
+  <table class="modtab">
+<thead><tr><th>Module</th><th>Lines</th><th>First line of the docstring</th><th>Imports (this package)</th><th>Imported by</th></tr></thead>
+<tbody>
+<tr><td><code>ablation</code></td><td class="num">77</td><td>Ablation: what each group of forecaster inputs is worth.</td><td><code>channels</code>, <code>cohort</code>, <code>config</code>, <code>evaluation</code>, <code>forecasting</code>, <code>pipeline</code></td><td><code>cli</code></td></tr>
+<tr><td><code>channels</code></td><td class="num">262</td><td>Channels: logical signals in canonical units, put on a causal grid per case.</td><td><code>vitaldb_cache</code></td><td><code>ablation</code>, <code>cli</code>, <code>cohort</code>, <code>config</code>, <code>dataset</code>, <code>features</code>, <code>inventory</code>, <code>live.replayer</code>, <code>live.twin</code>, <code>targets</code>, <code>verification</code></td></tr>
+<tr><td><code>cli</code></td><td class="num">107</td><td>`dte`: the pipeline&#x27;s command line. Run `uv run dte --help`.</td><td><code>ablation</code>, <code>channels</code>, <code>cohort</code>, <code>config</code>, <code>dataset</code>, <code>inventory</code>, <code>live</code>, <code>live.replayer</code>, <code>pipeline</code>, <code>verification</code></td><td>–</td></tr>
+<tr><td><code>cohort</code></td><td class="num">112</td><td>Cohorts: named, reproducible case sets, and an explorer for choosing them.</td><td><code>channels</code>, <code>inventory</code>, <code>patients</code>, <code>stages</code></td><td><code>ablation</code>, <code>cli</code>, <code>pipeline</code></td></tr>
+<tr><td><code>config</code></td><td class="num">118</td><td>Pipeline configuration, loaded from a YAML file such as configs/default.yaml.</td><td><code>channels</code>, <code>experts</code></td><td><code>ablation</code>, <code>cli</code>, <code>dataset</code>, <code>live.replayer</code>, <code>live.twin</code>, <code>pipeline</code>, <code>verification</code></td></tr>
+<tr><td><code>dataset</code></td><td class="num">133</td><td>Training data: one row per decision point, per case, cached per case.</td><td><code>channels</code>, <code>config</code>, <code>experts</code>, <code>features</code>, <code>labels</code>, <code>patients</code>, <code>stages</code>, <code>targets</code></td><td><code>cli</code>, <code>pipeline</code>, <code>verification</code></td></tr>
+<tr><td><code>evaluation</code></td><td class="num">119</td><td>Honest evaluation: every model is compared with a do-nothing-clever baseline.</td><td><code>forecasting</code>, <code>suggestion</code>, <code>targets</code></td><td><code>ablation</code>, <code>pipeline</code></td></tr>
+<tr><td><code>experts</code></td><td class="num">152</td><td>Expert models: mechanistic models stepped alongside a case.</td><td><code>experts.anesthesim</code>, <code>experts.pas</code>, <code>patients</code></td><td><code>config</code>, <code>dataset</code>, <code>live.twin</code></td></tr>
+<tr><td><code>experts.anesthesim</code></td><td class="num">412</td><td>Expert ported from AnestheSIM 1.0.0 (MATLAB/Simulink; github.com/izabirs/AnestheSIM).</td><td><code>experts.baseline</code>, <code>patients</code></td><td><code>experts</code>, <code>live.twin</code></td></tr>
+<tr><td><code>experts.baseline</code></td><td class="num">56</td><td>Pre-dose baselines: a patient&#x27;s MAP and HR before any drug, as known live.</td><td>–</td><td><code>experts.anesthesim</code>, <code>experts.pas</code></td></tr>
+<tr><td><code>experts.pas</code></td><td class="num">83</td><td>Expert backed by the Python Anesthesia Simulator (PAS).</td><td><code>experts.baseline</code>, <code>patients</code></td><td><code>experts</code></td></tr>
+<tr><td><code>features</code></td><td class="num">78</td><td>Forecaster inputs at decision points, from what was observed up to each point.</td><td><code>channels</code>, <code>patients</code></td><td><code>dataset</code>, <code>live.twin</code></td></tr>
+<tr><td><code>forecasting</code></td><td class="num">110</td><td>Forecasters: one LightGBM model per (target, horizon).</td><td><code>splits</code>, <code>targets</code></td><td><code>ablation</code>, <code>evaluation</code>, <code>pipeline</code>, <code>suggestion</code></td></tr>
+<tr><td><code>inventory</code></td><td class="num">108</td><td>What every case has: its tracks (from file headers) and the anaesthetics it</td><td><code>channels</code>, <code>stages</code>, <code>vitaldb_cache</code></td><td><code>cli</code>, <code>cohort</code></td></tr>
+<tr><td><code>labels</code></td><td class="num">66</td><td>Labelling what happened in a case: hypotension events and interventions.</td><td>–</td><td><code>dataset</code>, <code>targets</code></td></tr>
+<tr><td><code>live</code></td><td class="num">7</td><td>The live layer: Replayer -&gt; MQTT -&gt; Twin -&gt; InfluxDB -&gt; Grafana (services outlined).</td><td>–</td><td><code>cli</code></td></tr>
+<tr><td><code>live.replayer</code></td><td class="num">72</td><td>Replays a VitalDB case&#x27;s raw records into a twin as if live.</td><td><code>channels</code>, <code>config</code>, <code>live.twin</code>, <code>patients</code>, <code>pipeline</code>, <code>vitaldb_cache</code></td><td><code>cli</code></td></tr>
+<tr><td><code>live.twin</code></td><td class="num">173</td><td>The twin: follows one case live, from raw records to forecasts and suggestions.</td><td><code>channels</code>, <code>config</code>, <code>experts</code>, <code>experts.anesthesim</code>, <code>features</code>, <code>patients</code></td><td><code>live.replayer</code></td></tr>
+<tr><td><code>patients</code></td><td class="num">45</td><td>Patient covariates and identities from VitalDB&#x27;s clinical_data table.</td><td><code>vitaldb_cache</code></td><td><code>cohort</code>, <code>dataset</code>, <code>experts</code>, <code>experts.anesthesim</code>, <code>experts.pas</code>, <code>features</code>, <code>live.replayer</code>, <code>live.twin</code>, <code>verification</code></td></tr>
+<tr><td><code>pipeline</code></td><td class="num">103</td><td>End-to-end training run: cohort -&gt; rows -&gt; forecasters -&gt; suggesters -&gt; evaluation.</td><td><code>cohort</code>, <code>config</code>, <code>dataset</code>, <code>evaluation</code>, <code>forecasting</code>, <code>splits</code>, <code>suggestion</code></td><td><code>ablation</code>, <code>cli</code>, <code>live.replayer</code></td></tr>
+<tr><td><code>splits</code></td><td class="num">19</td><td>Splits by patient (subjectid), so no patient&#x27;s cases sit on both sides.</td><td>–</td><td><code>forecasting</code>, <code>pipeline</code>, <code>suggestion</code></td></tr>
+<tr><td><code>stages</code></td><td class="num">61</td><td>Per-case cache of pipeline stage outputs, keyed by the stage&#x27;s config.</td><td>–</td><td><code>cohort</code>, <code>dataset</code>, <code>inventory</code></td></tr>
+<tr><td><code>suggestion</code></td><td class="num">70</td><td>Intervention suggestions: what a clinician would typically change now, per drug.</td><td><code>forecasting</code>, <code>splits</code></td><td><code>evaluation</code>, <code>pipeline</code></td></tr>
+<tr><td><code>targets</code></td><td class="num">68</td><td>Targets: what forecasters predict. Add a vital by adding an entry to TARGETS.</td><td><code>channels</code>, <code>labels</code></td><td><code>dataset</code>, <code>evaluation</code>, <code>forecasting</code></td></tr>
+<tr><td><code>verification</code></td><td class="num">81</td><td>Expert fidelity: how closely each expert tracks the real case.</td><td><code>channels</code>, <code>config</code>, <code>dataset</code>, <code>patients</code></td><td><code>cli</code></td></tr>
+<tr><td><code>vitaldb_cache</code></td><td class="num">182</td><td>Local cache of the VitalDB dataset (PhysioNet, ~95 GB).</td><td>–</td><td><code>channels</code>, <code>inventory</code>, <code>live.replayer</code>, <code>patients</code></td></tr>
+</tbody>
+</table>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-tests">12 &nbsp;Tests</h2></summary>
+  <table>
+    <thead><tr><th>File</th><th>What it checks</th></tr></thead>
+    <tbody>
+      <tr><td><code>tests/test_channels.py</code></td><td>Dose counter (jitter, resets, glitches, late re-base); causal grid; staleness; artefacts; perturbation is independent per channel.</td></tr>
+      <tr><td><code>tests/test_labels.py</code></td><td>Hypotension needs a full minute; spikes; missing MAP; knob transients; value and event targets.</td></tr>
+      <tr><td><code>tests/test_experts.py</code></td><td>Pre-dose baseline; lookahead equals real steps and keeps the state; TCI reaches its target; what-if direction.</td></tr>
+      <tr><td><code>tests/test_anesthesim.py</code></td><td>The AnestheSIM port: steady state, effect-site lag, norepinephrine lag, BIS direction, volatile agents, speed.</td></tr>
+      <tr><td><code>tests/test_suggestion.py</code></td><td>Suggested settings stay on the correct side of the current setting.</td></tr>
+      <tr><td><code>tests/test_live.py</code></td><td>The live twin grid equals the offline frame (causality).</td></tr>
+    </tbody>
+  </table>
+  <p>Run: <code>uv run pytest</code>. Some tests need VitalDB files.</p>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-adr">13 &nbsp;Design decisions (ADRs)</h2></summary>
+  <table>
+    <thead><tr><th>ADR</th><th>Decision</th><th>Rejected option and reason</th></tr></thead>
+    <tbody>
+      <tr><td>0001</td><td>Expert signals are inputs of the forecaster.</td><td>A gated mixture of experts. The experts predict different quantities. The forecaster learns how much to trust each expert.</td></tr>
+      <tr><td>0002</td><td>Causal 1 s grid with staleness. Sensor faults come from perturbation of the raw records.</td><td>Interpolation. It uses the future and hides gaps.</td></tr>
+      <tr><td>0003</td><td>PAS from git commit <code>4f9509f</code>, with overrides for scipy and control, on Python 3.14.</td><td>PyPI 1.0.0 (old models, breaks on numpy 2); newer git main (does not import); Python 3.12 (not necessary). Note: PAS is GPLv3.</td></tr>
+      <tr><td>0004</td><td>An intervention on a TCI pump is a change of the target concentration.</td><td>Rate changes. The pump controller makes them, not the clinician.</td></tr>
+    </tbody>
+  </table>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-results">14 &nbsp;Results at a glance</h2></summary>
+  <p>Source: <code>docs/results.md</code> (run <code>fourth</code>, cohort tiva-artline, 1,585 cases, 1,543 patients). This report did not reproduce these numbers.</p>
+  <table>
+    <thead><tr><th>Question</th><th>Model</th><th>Baseline</th></tr></thead>
+    <tbody>
+      <tr><td>MAP RMSE at 5 min (mmHg)</td><td class="num">12.09</td><td class="num">16.19 (persistence)</td></tr>
+      <tr><td>BIS RMSE at 5 min</td><td class="num">7.33</td><td class="num">9.80</td></tr>
+      <tr><td>Hypotension onset AUROC at 5 min</td><td class="num">0.888</td><td class="num">0.754 (MAP already low)</td></tr>
+      <tr><td>Propofol suggester log loss</td><td class="num">0.189</td><td class="num">0.228 (class prior)</td></tr>
+      <tr><td>Propofol Ce, PAS Marsh vs pump (MDAPE)</td><td class="num">2.6 %</td><td>–</td></tr>
+    </tbody>
+  </table>
+  <div class="box"><p>Important for the architecture: the ablation shows that the expert models add almost nothing to the forecast accuracy (BIS RMSE −0.02).
+  The value of the experts is elsewhere: concentrations that no monitor shows, and the what-if effects.</p></div>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-extend">15 &nbsp;How to extend the project</h2></summary>
+  <table>
+    <thead><tr><th>Task</th><th>Where to change</th><th>Also do</th></tr></thead>
+    <tbody>
+      <tr><td>Add a signal</td><td><code>channels.CHANNELS</code>: one <code>Channel</code></td><td>Add it to <code>channels:</code> in the YAML. The hash of the cache changes automatically.</td></tr>
+      <tr><td>Add a forecast target</td><td><code>targets.TARGETS</code>: one <code>Target</code></td><td>Add it to <code>targets:</code> in the YAML.</td></tr>
+      <tr><td>Add an expert kind</td><td>New class in <code>experts/</code> with <code>reset</code> and <code>step</code>; register it in <code>experts.kinds()</code></td><td>Optional: <code>lookahead</code>, <code>lookahead_columns</code>, <code>scenario</code>, <code>version</code>.</td></tr>
+      <tr><td>Add an expert configuration</td><td><code>experts:</code> in the YAML</td><td>Only this expert is computed. The others come from the cache.</td></tr>
+      <tr><td>Change the model family</td><td><code>forecasting._model</code></td><td>Keep <code>fit</code>, <code>predict</code> and <code>predict_proba</code>.</td></tr>
+      <tr><td>Change how a stage computes</td><td>The stage module</td><td>Increase <code>stages.VERSIONS</code> for this stage and the stages after it.</td></tr>
+      <tr><td>New cohort</td><td>New YAML in <code>cohorts/</code></td><td>Use <code>dte explore</code> and <code>dte coverage</code> to choose criteria.</td></tr>
+    </tbody>
+  </table>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-gaps">16 &nbsp;Open items and observations</h2></summary>
+  <p>These items come from a read of the code and the plan. They are not bugs that a test showed.</p>
+  <ul>
+    <li><b>The service layer is not ready.</b> <code>replay_mqtt</code> raises <code>NotImplementedError</code>. <code>docker-compose.yml</code> has no replayer and no twin service. The plan puts “replay → MQTT → twin → InfluxDB → Grafana” in “Must”.</li>
+    <li><b>The plan and the code differ.</b> The plan names PAS as the drug model. The code adds the AnestheSIM port, which gives the lookaheads and the what-if. The plan names a warning model. The code also has BIS, HR and MAP forecasters and intervention suggesters.</li>
+    <li><b>PAS has no lookahead.</b> The config comment says that PAS is too slow for it.</li>
+    <li><b>The cache does not see code changes.</b> A developer must increase <code>stages.VERSIONS</code> by hand. If not, old results stay in use.</li>
+    <li><b>Memory limit.</b> The decision interval is 30 s, not 10 s, to fit the TIVA cohort in 32 GB of RAM.</li>
+    <li><b>Boluses are not visible.</b> VitalDB gives only totals per case for boluses.</li>
+    <li><b>The suggesters copy one hospital's practice.</b> They do not show what is correct.</li>
+    <li><b>Licence.</b> PAS is GPLv3. AnestheSIM is MIT and its notice must stay in <code>experts/anesthesim.py</code>.</li>
+  </ul>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-read">17 &nbsp;Suggested order to read the code</h2></summary>
+  <ol>
+    <li><code>GLOSSARY.md</code> and <code>docs/adr/</code>: the words and the four decisions.</li>
+    <li><code>cli.py</code>: all entry points on one page.</li>
+    <li><code>channels.py</code>: <code>Channel</code>, <code>to_grid</code>, <code>DoseCounter</code>.</li>
+    <li><code>config.py</code> and <code>stages.py</code>: configuration and cache keys.</li>
+    <li><code>experts/__init__.py</code>, then <code>experts/baseline.py</code>, <code>experts/pas.py</code>, <code>experts/anesthesim.py</code>.</li>
+    <li><code>labels.py</code>, <code>targets.py</code>, <code>features.py</code>.</li>
+    <li><code>dataset.py</code>: how the parts join into rows.</li>
+    <li><code>pipeline.py</code>, <code>forecasting.py</code>, <code>suggestion.py</code>, <code>evaluation.py</code>.</li>
+    <li><code>live/twin.py</code> and <code>live/replayer.py</code>; then <code>tests/test_live.py</code>.</li>
+    <li><code>docs/results.md</code>: what the models achieve.</li>
+  </ol>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-process">18 &nbsp;Discussion process and decisions</h2></summary>
+  <p>The request is in <code>context/evaluation-01/task01-init-report.md</code>: “Make a html report to help me figure out the architecture of this project.”
+  It also gives the style and the file layout.
+  The request was clear, so no questions were asked before the work.</p>
+  <table>
+    <thead><tr><th>Topic</th><th>Options</th><th>Decision</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>Marker tool</td><td>(a) Copy <code>marks.js</code> and <code>marks.css</code> of the hydrodynamics homework 02 and adapt them. (b) Write a new tool.</td><td>(a)</td><td>The request names that report as the model. A copy gives the same behaviour and the same JSON format. Changes: file name, storage keys, <code>&lt;pre&gt;</code> blocks can get a mark, no MathJax.</td></tr>
+      <tr><td>Export short key</td><td>Ctrl+S, or a new key</td><td>Ctrl+S (Mac: ⌘S)</td><td>Same as the reference report.</td></tr>
+      <tr><td>Theme</td><td>(a) Dark only. (b) Dark and light with a button.</td><td>(a)</td><td>The request asks for a dark theme. One theme keeps the CSS small.</td></tr>
+      <tr><td>Foldable sections</td><td><code>&lt;details&gt;</code> elements, or JavaScript</td><td><code>&lt;details class="sec"&gt;</code></td><td>No script is necessary. The marker tool uses these sections for its keys.</td></tr>
+      <tr><td>Diagrams</td><td>(a) Inline SVG written by hand. (b) Mermaid from a CDN. (c) Images made by a script.</td><td>(a)</td><td>The page stays one file and works offline. No external script.</td></tr>
+      <tr><td>Module table</td><td>Write by hand, or make it from the code</td><td>Make it with <code>ast</code> in <code>build.py</code></td><td>The table stays true to the code. Run <code>build.py</code> again after a code change.</td></tr>
+      <tr><td>Source of facts</td><td>Run the pipeline, or read the code and docs</td><td>Read the code at commit <code>ec45ac4</code>, <code>README.md</code>, <code>GLOSSARY.md</code>, the ADRs, <code>docs/results.md</code> and the project plan PDF</td><td><code>data/</code> and <code>models/</code> are not on this machine. The numbers come from <code>docs/results.md</code>.</td></tr>
+      <tr><td>Build</td><td>Edit the final HTML, or build it from a template</td><td>Template + <code>build.py</code></td><td>Same method as the reference report: edit the template, run the script, get one self-contained file.</td></tr>
+    </tbody>
+  </table>
+</details>
+
+<!-- ====================================================================== -->
+<details class="sec">
+  <summary><h2 id="s-artifacts">19 &nbsp;Location of the artifacts</h2></summary>
+  <p>All paths are relative to the repository root.</p>
+  <table>
+    <thead><tr><th>Path</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><code>context/evaluation-01/task01-init-report.md</code></td><td>The request (task instruction).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01.html</code></td><td>This report (made by <code>build.py</code>; do not edit).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01-markers.json</code></td><td>The study marks. <code>build.py</code> puts them into the page. Ctrl+S writes them.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/template.html</code></td><td>Text and diagrams of the report.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/style.css</code></td><td>Dark page style.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/marks.js</code>, <code>marks.css</code></td><td>Marker tool (adapted copy).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/build.py</code></td><td>Build script. It also describes how the data of the report is made.</td></tr>
+      <tr><td><code>context/evaluation-01/task01/evaluation-01/modules.json</code></td><td>Module data from <code>build.py</code> (lines, docstring, imports).</td></tr>
+      <tr><td><code>context/evaluation-01/task01/misc/</code></td><td>Other files: notes about the origin of the marker tool.</td></tr>
+      <tr><td><code>src/digital_twin_engineering/</code>, <code>configs/</code>, <code>cohorts/</code>, <code>docs/</code>, <code>tests/</code>, <code>GLOSSARY.md</code>, <code>README.md</code>, <code>docker-compose.yml</code>, <code>pyproject.toml</code></td><td>Inputs: the project files that this report describes.</td></tr>
+      <tr><td><code>Anaesthesia Digital Twin Project Plan.pdf</code></td><td>Input: goal, scope and priorities of the project.</td></tr>
+      <tr><td><code>…/course-hydrodynamics/resources/homeworks/homework02/homework02_report.html</code>, <code>marks.js</code>, <code>marks.css</code>, <code>theme.css</code></td><td>Input: the reference report for the marker tool and the dark colours (outside this repository).</td></tr>
+    </tbody>
+  </table>
+  <p>To build the report again:</p>
+<pre><code>python3 context/evaluation-01/task01/evaluation-01/build.py</code></pre>
+</details>
+</main>
+
+<script>
+// Open all / close all sections.
+(function () {
+  const all = () => document.querySelectorAll('details.sec');
+  document.getElementById('open-all').addEventListener('click', () => all().forEach(d => { d.open = true; }));
+  document.getElementById('close-all').addEventListener('click', () => all().forEach(d => { d.open = false; }));
+  // A click on a link of the contents opens the target section.
+  document.querySelectorAll('nav.toc a[href^="#"]').forEach(a => a.addEventListener('click', () => {
+    const el = document.querySelector(a.getAttribute('href'));
+    for (let d = el && el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+  }));
+})();
+</script>
+<script type="application/json" id="mk-committed">
+{"version": 1, "marks": [
+]}
+</script>
+<script>
+// Origin: course-hydrodynamics homework02/marks.js. Changes for this report (eval-01):
+//   file name evaluation-01-markers.json, storage keys "dte-eval01-task01-marks*", BLOCK_SEL with <pre>.
+// ---- Study marks: flag a block or a selected text as "Struggle / Unsure / Got it", with a note.
+//
+// Data flow:
+//   evaluation-01-markers.json (in git)  --build.py-->  <script id="mk-committed">  (the committed marks)
+//   your clicks          -->  browser localStorage                        (the working copy)
+//   "Export" button      -->  write evaluation-01-markers.json (linked file), or save, download or copy it
+//   Ctrl+S (Mac: Cmd+S)  -->  the same as "Export", also when the panel is closed
+//   "Link evaluation-01-markers.json"    -->  Chrome/Edge: the page reads this file at each load (File System Access API)
+//
+// Anchors: a block mark stores the key "<section id>:<hash of the block text>".
+// A text mark stores the same key plus the selected text ("quote") and its occurrence ("occ").
+// Math counts as its TeX source, for example "$\Wo$", so a formula can be part of a quote.
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------------ settings
+  const LS_KEY = 'dte-eval01-task01-marks-v1';
+  const LEVELS = [
+    { id: 'struggle', label: 'Struggle' },
+    { id: 'unsure',   label: 'Unsure' },
+    { id: 'ok',       label: 'Got it' },
+  ];
+  // Elements that get a flag. Nested ones get their own flag too.
+  const BLOCK_SEL = 'p, li, pre, figure, div.box, tr';  // eval-01: + pre, - display math
+  // Nested blocks that do not count in the key of their parent (so a change inside them keeps the parent key).
+  const SKIP_IN_KEY = new Set(['DETAILS', 'OL', 'UL', 'TABLE', 'FIGURE']);
+
+  const main = document.querySelector('main');
+  if (!main) return;
+
+  // ------------------------------------------------------------------ helpers
+  function h(tag, props, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(props || {})) {
+      if (k === 'class') el.className = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const kid of kids.flat(Infinity)) if (kid != null) el.append(kid);
+    return el;
+  }
+  function fnv(s) {  // FNV-1a, 32 bit, as 8 hex digits
+    let x = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 0x01000193); }
+    return (x >>> 0).toString(16).padStart(8, '0');
+  }
+  const today = () => new Date().toISOString().slice(0, 10);
+  const newId = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const short = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+  function nthIndexOf(text, q, n) {
+    let i = -1;
+    for (let k = 0; k <= n; k++) { i = text.indexOf(q, i + 1); if (i < 0) return -1; }
+    return i;
+  }
+  function countBefore(text, q, pos) {
+    let n = 0, i = text.indexOf(q);
+    while (i >= 0 && i < pos) { n++; i = text.indexOf(q, i + 1); }
+    return n;
+  }
+
+  // ------------------------------------------------------------------ text of a block
+  // Returns the normalised text (one space for each run of white space) and the segments that make it.
+  // A text segment keeps "map": normalised index -> raw index in its text node.
+  const texOf = new WeakMap();  // mjx-container -> TeX source
+  function serialize(root, forKey) {
+    let text = '', space = true;
+    const segs = [];
+    function addMath(el) {
+      const t = texOf.get(el) || el.textContent;
+      const s = el.getAttribute('display') === 'true' ? t : '$' + t + '$';
+      segs.push({ node: el, math: true, start: text.length, end: text.length + s.length });
+      text += s; space = false;
+    }
+    function walk(node) {
+      for (const ch of node.childNodes) {
+        if (ch.nodeType === 3) {
+          const raw = ch.data, map = [];
+          let norm = '';
+          for (let i = 0; i < raw.length; i++) {
+            if (/\s/.test(raw[i])) { if (space) continue; norm += ' '; space = true; }
+            else { norm += raw[i]; space = false; }
+            map.push(i);
+          }
+          if (norm) { segs.push({ node: ch, start: text.length, end: text.length + norm.length, map }); text += norm; }
+        } else if (ch.nodeType === 1) {
+          const tag = ch.tagName.toUpperCase();
+          if (tag === 'MJX-CONTAINER') addMath(ch);
+          else if (ch.classList.contains('mk-ui') || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'SVG') continue;
+          else if (forKey && SKIP_IN_KEY.has(tag)) continue;
+          else walk(ch);
+        }
+      }
+    }
+    if (root.tagName.toUpperCase() === 'MJX-CONTAINER') addMath(root); else walk(root);
+    return { text, segs };
+  }
+
+  // ------------------------------------------------------------------ blocks
+  const blocks = [];              // { el, host, flag, idx, secId, where, key, keyText }
+  const byKey = new Map();
+  const byEl = new WeakMap();
+
+  function sectionOf(el) {
+    const chain = [];
+    for (let d = el.closest('details.sec'); d; d = d.parentElement && d.parentElement.closest('details.sec')) {
+      const hd = d.querySelector(':scope > summary [id]');
+      if (hd) chain.unshift({ id: hd.id, title: serialize(hd, true).text.trim() });
+    }
+    if (!chain.length) return { id: 'top', where: 'Introduction and references' };
+    return { id: chain[chain.length - 1].id, where: chain.map(c => c.title).join(' › ') };
+  }
+
+  function discover() {
+    const seen = new Map();
+    for (const el of main.querySelectorAll(BLOCK_SEL)) {
+      if (el.closest('nav, .widget, .mk-ui')) continue;
+      if (el.tagName === 'TR' && !el.querySelector('td')) continue;
+      const keyText = serialize(el, true).text.trim();
+      if (!keyText) continue;
+      const sec = sectionOf(el);
+      let key = sec.id + ':' + fnv(keyText);
+      const n = seen.get(key) || 0;
+      seen.set(key, n + 1);
+      if (n) key += '~' + n;  // the same text twice in one section
+
+      // The host shows the flag and the colour. A display equation gets a wrapper,
+      // because the equation itself scrolls and would hide the flag.
+      let host = el;
+      if (el.tagName.toUpperCase() === 'MJX-CONTAINER') {
+        host = h('span', { class: 'mk-eqwrap' });
+        el.before(host);
+        host.append(el);
+      }
+      const flag = h('button', { class: 'mk-ui mk-flag', type: 'button', title: 'Mark this block' }, '⚑');
+      if (el.tagName === 'TR') el.lastElementChild.append(flag); else host.append(flag);
+      host.classList.add('mk-host');
+      el.classList.add('mk-block');
+
+      const b = { el, host, flag, idx: blocks.length, secId: sec.id, where: sec.where, key, keyText };
+      flag.addEventListener('click', e => { e.stopPropagation(); onFlag(b); });
+      blocks.push(b); byKey.set(key, b); byEl.set(el, b);
+    }
+  }
+
+  // ------------------------------------------------------------------ marks: load and save
+  let committed = [];  // the baseline: evaluation-01-markers.json in the build, or the linked file
+  try { committed = JSON.parse(document.getElementById('mk-committed').textContent).marks || []; } catch (e) { /* no committed marks */ }
+  const FIELDS = ['id', 'kind', 'level', 'where', 'key', 'quote', 'occ', 'note', 'date'];
+  const clean = m => Object.fromEntries(FIELDS.filter(f => m[f] !== undefined).map(f => [f, m[f]]));
+  let base = fnv(JSON.stringify(committed.map(clean)));
+
+  let marks = null, localBase = null, hadLocal = false;
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if (s && Array.isArray(s.marks)) { marks = s.marks; localBase = s.base; hadLocal = true; }
+  } catch (e) { /* storage missing or blocked */ }
+  if (!marks) { marks = committed.map(clean); localBase = base; }
+
+  function save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ base: localBase, marks })); } catch (e) { /* not kept */ }
+  }
+
+  // One mark per line, in document order: easy to read and to diff in git.
+  function exportJSON(list) {
+    const pos = m => { const r = resolve(m); return r ? r.b.idx * 1e6 + (r.s || 0) : 1e12; };
+    const sorted = list.map(m => [pos(m), m]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+    return '{"version": 1, "marks": [\n' + sorted.map(m => '  ' + JSON.stringify(clean(m))).join(',\n') +
+      (sorted.length ? '\n' : '') + ']}\n';
+  }
+  const dirty = () => exportJSON(marks) !== exportJSON(committed);
+  // A new build with new evaluation-01-markers.json: adopt it silently when it equals the local marks.
+  let conflict = localBase !== base;
+
+  // ------------------------------------------------------------------ marks: find their place
+  function resolve(m) {
+    let b = byKey.get(m.key);
+    if (m.kind === 'text') {
+      const inB = bb => bb && serialize(bb.el, false).text.includes(m.quote);
+      if (!inB(b)) b = blocks.find(bb => bb.secId === m.key.split(':')[0] && inB(bb)) || blocks.find(inB);
+      if (!b) return null;
+      const text = serialize(b.el, false).text;
+      let s = nthIndexOf(text, m.quote, m.occ || 0);
+      if (s < 0) s = text.indexOf(m.quote);
+      return { b, s, e: s + m.quote.length };
+    }
+    if (!b) {  // the block text changed: look for the same start in the same section
+      const head = (m.quote || '').slice(0, 40);
+      b = head && blocks.find(bb => bb.secId === m.key.split(':')[0] && bb.keyText.startsWith(head));
+    }
+    return b ? { b } : null;
+  }
+
+  // ------------------------------------------------------------------ show the marks in the page
+  function clearHighlights() {
+    for (const mk of main.querySelectorAll('mark.mk-hl')) { const p = mk.parentNode; mk.replaceWith(...mk.childNodes); p.normalize(); }
+    for (const el of main.querySelectorAll('.mk-hlm')) { el.classList.remove('mk-hlm', ...LEVELS.map(l => 'mk-L-' + l.id)); delete el.dataset.mk; }
+    for (const b of blocks) {
+      b.host.classList.remove(...LEVELS.map(l => 'mk-L-' + l.id), 'mk-note');
+      if (b.host !== b.el) b.el.classList.remove(...LEVELS.map(l => 'mk-L-' + l.id));
+      b.flag.title = 'Mark this block';
+    }
+  }
+
+  function highlight(m, r) {
+    const { segs } = serialize(r.b.el, false);
+    for (const g of segs) {
+      if (g.end <= r.s || g.start >= r.e) continue;
+      if (g.math) { g.node.classList.add('mk-hlm', 'mk-L-' + m.level); g.node.dataset.mk = m.id; continue; }
+      const a = Math.max(r.s, g.start) - g.start, z = Math.min(r.e, g.end) - g.start;
+      const rawA = g.map[a], rawZ = z < g.map.length ? g.map[z] : g.node.data.length;
+      let node = g.node;
+      if (rawA > 0) node = node.splitText(rawA);
+      if (rawZ - rawA < node.data.length) node.splitText(rawZ - rawA);
+      const mk = h('mark', { class: 'mk-hl mk-L-' + m.level, 'data-mk': m.id, title: m.note || LEVELS.find(l => l.id === m.level).label });
+      node.before(mk);
+      mk.append(node);
+    }
+  }
+
+  function render() {
+    clearHighlights();
+    for (const m of marks) {
+      const r = resolve(m);
+      if (!r) continue;
+      if (m.kind === 'text') { if (r.s >= 0) highlight(m, r); continue; }
+      r.b.host.classList.add('mk-L-' + m.level);
+      if (m.note) r.b.host.classList.add('mk-note');
+      r.b.flag.title = LEVELS.find(l => l.id === m.level).label + (m.note ? ': ' + m.note : '');
+    }
+    if (focus) applyFocus(true);
+    renderPanel();
+  }
+
+  // ------------------------------------------------------------------ popover: level and note of one mark
+  const pop = h('div', { class: 'mk-ui mk-pop', hidden: true });
+  let popMark = null;
+  function openPop(m, rect) {
+    popMark = m;
+    pop.replaceChildren(
+      h('div', { class: 'mk-pop-head' }, m.kind === 'text' ? '“' + short(m.quote, 70) + '”' : short(m.quote || '', 70)),
+      h('div', { class: 'mk-levels' }, LEVELS.map(l => h('button', {
+        type: 'button', class: 'mk-lv mk-L-' + l.id + (m.level === l.id ? ' mk-on' : ''),
+        onclick: () => { m.level = l.id; save(); render(); openPop(m, rect); },
+      }, l.label))),
+      h('textarea', { rows: 3, placeholder: 'Note: what is unclear?', oninput: e => { m.note = e.target.value; save(); renderPanel(); } }),
+      h('div', { class: 'mk-pop-foot' },
+        h('button', { type: 'button', onclick: () => { marks = marks.filter(x => x !== m); closePop(); save(); render(); } }, 'Remove'),
+        h('button', { type: 'button', onclick: closePop }, 'Close')),
+    );
+    pop.querySelector('textarea').value = m.note || '';
+    pop.hidden = false;
+    const left = Math.min(Math.max(rect.right + scrollX - 300, 8 + scrollX), scrollX + document.documentElement.clientWidth - 316);
+    pop.style.left = left + 'px';
+    pop.style.top = (rect.bottom + scrollY + 6) + 'px';
+  }
+  function closePop() { pop.hidden = true; popMark = null; }
+
+  function onFlag(b) {
+    let m = marks.find(x => x.kind === 'block' && resolve(x) && resolve(x).b === b);
+    if (!m) {
+      m = { id: newId(), kind: 'block', level: 'struggle', where: b.where, key: b.key, quote: short(b.keyText, 160), note: '', date: today() };
+      marks.push(m); save(); render();
+    }
+    openPop(m, b.flag.getBoundingClientRect());
+  }
+
+  // ------------------------------------------------------------------ text selection
+  const selBtn = h('button', { class: 'mk-ui mk-selbtn', type: 'button', hidden: true }, '⚑ Mark selection');
+  let pending = null;
+  function readSelection() {
+    const sel = getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return null;
+    const r = sel.getRangeAt(0);
+    let n = r.commonAncestorContainer;
+    if (n.nodeType === 3) n = n.parentNode;
+    if (!main.contains(n) || n.closest('.mk-ui')) return null;
+    const el = n.closest('.mk-block');
+    const b = el && byEl.get(el);
+    if (!b) return { error: 'Select text inside one paragraph, step, equation or table row.', r };
+    const { text, segs } = serialize(b.el, false);
+    let s = Infinity, e = -1;
+    for (const g of segs) {
+      if (!r.intersectsNode(g.node)) continue;
+      if (g.math) { s = Math.min(s, g.start); e = Math.max(e, g.end); continue; }
+      const ra = g.node === r.startContainer ? r.startOffset : 0;
+      const rz = g.node === r.endContainer ? r.endOffset : g.node.data.length;
+      if (rz <= ra) continue;
+      const idx = raw => { const i = g.map.findIndex(x => x >= raw); return i < 0 ? g.map.length : i; };
+      s = Math.min(s, g.start + idx(ra)); e = Math.max(e, g.start + idx(rz));
+    }
+    while (s < e && text[s] === ' ') s++;
+    while (e > s && text[e - 1] === ' ') e--;
+    if (!(e > s)) return null;
+    const quote = text.slice(s, e);
+    return { b, quote, occ: countBefore(text, quote, s), r };
+  }
+  function onSelect() {
+    pending = readSelection();
+    if (!pending) { selBtn.hidden = true; return; }
+    const rect = pending.r.getBoundingClientRect();
+    selBtn.textContent = pending.error ? pending.error : '⚑ Mark selection';
+    selBtn.classList.toggle('mk-err', !!pending.error);
+    selBtn.hidden = false;
+    selBtn.style.left = (rect.right + scrollX - 10) + 'px';
+    selBtn.style.top = (rect.bottom + scrollY + 4) + 'px';
+  }
+  selBtn.addEventListener('mousedown', e => e.preventDefault());
+  selBtn.addEventListener('click', () => {
+    selBtn.hidden = true;
+    if (!pending || pending.error) return;
+    const rect = pending.r.getBoundingClientRect();
+    const m = { id: newId(), kind: 'text', level: 'struggle', where: pending.b.where, key: pending.b.key,
+                quote: pending.quote, occ: pending.occ, note: '', date: today() };
+    marks.push(m);
+    getSelection().removeAllRanges();
+    save(); render();
+    openPop(m, rect);
+  });
+
+  // ------------------------------------------------------------------ focus filter
+  let focus = false;
+  const openedByFocus = new Set();
+  function markedEls() {
+    const out = [];
+    for (const m of marks) { const r = resolve(m); if (r) out.push(r.b.el); }
+    return out;
+  }
+  function applyFocus(on) {
+    document.body.classList.toggle('mk-focus', on);
+    const lit = markedEls();
+    for (const b of blocks) {
+      const keep = lit.some(x => x.contains(b.el) || b.el.contains(x));
+      b.host.classList.toggle('mk-dim', on && !keep);
+    }
+    if (on) {
+      for (const x of lit) for (let d = x.closest('details'); d; d = d.parentElement && d.parentElement.closest('details'))
+        if (!d.open) { d.open = true; openedByFocus.add(d); }
+    } else {
+      for (const d of openedByFocus) d.open = false;
+      openedByFocus.clear();
+    }
+  }
+
+  // ------------------------------------------------------------------ go to a mark
+  function goTo(m) {
+    const r = resolve(m);
+    if (!r) return;
+    for (let d = r.b.el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+    const target = (m.kind === 'text' && main.querySelector('[data-mk="' + m.id + '"]')) || r.b.host;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.classList.add('mk-flash');
+    setTimeout(() => target.classList.remove('mk-flash'), 1600);
+  }
+
+  // ------------------------------------------------------------------ linked evaluation-01-markers.json (Chrome/Edge)
+  // The file handle stays in IndexedDB. After a browser restart, Chrome asks again for permission.
+  const canLink = 'showOpenFilePicker' in window;
+  let fileHandle = null, fileState = 'none';  // none | ok | ask
+  function idb(mode, fn) {
+    return new Promise((res, rej) => {
+      const rq = indexedDB.open('dte-eval01-task01-marks', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+      rq.onerror = () => rej(rq.error);
+      rq.onsuccess = () => {
+        const tx = rq.result.transaction('kv', mode), r = fn(tx.objectStore('kv'));
+        tx.oncomplete = () => res(r.result);
+        tx.onerror = () => rej(tx.error);
+      };
+    });
+  }
+  const loadHandle = () => idb('readonly', st => st.get('file')).catch(() => null);
+  const keepHandle = hd => idb('readwrite', st => st.put(hd, 'file')).catch(() => {});
+
+  // Make the file the new baseline. Keep local changes only if they differ from the file.
+  async function readLinked() {
+    const list = JSON.parse(await (await fileHandle.getFile()).text()).marks || [];
+    committed = list.map(clean);
+    base = fnv(JSON.stringify(committed));
+    if (!hadLocal || !dirty()) { marks = committed.map(clean); localBase = base; conflict = false; }
+    else conflict = localBase !== base;
+    fileState = 'ok';
+    save(); render();
+  }
+  async function linkFile() {
+    try {
+      [fileHandle] = await showOpenFilePicker({ types: [{ description: 'evaluation-01-markers.json', accept: { 'application/json': ['.json'] } }] });
+      await keepHandle(fileHandle);
+      hadLocal = true;  // the marks in the page stay; the panel shows if they differ from the file
+      await reconnect();
+    } catch (e) { if (e.name !== 'AbortError') flashStatus('Link failed: ' + e.message); }
+  }
+  async function reconnect() {
+    try {
+      if (await fileHandle.requestPermission({ mode: 'readwrite' }) !== 'granted') return;
+      await readLinked();
+    } catch (e) { flashStatus('Read failed: ' + e.message); }
+  }
+  async function autoLoad() {
+    if (!canLink) return;
+    fileHandle = await loadHandle();
+    if (!fileHandle) return;
+    try {
+      if (await fileHandle.queryPermission({ mode: 'readwrite' }) === 'granted') await readLinked();
+      else { fileState = 'ask'; renderPanel(); }  // a click is necessary: see the bar button
+    } catch (e) { fileState = 'ask'; renderPanel(); }
+  }
+
+  // ------------------------------------------------------------------ toolbar and panel
+  const barCount = h('span', {});
+  const focusBtn = h('button', { type: 'button', title: 'Dim all unmarked content and open the boxes with marks',
+    onclick: () => { focus = !focus; focusBtn.classList.toggle('mk-on', focus); applyFocus(focus); } }, 'Focus');
+  const bar = h('div', { class: 'mk-ui mk-bar' },
+    h('button', { type: 'button', onclick: () => { panel.hidden = !panel.hidden; renderPanel(); } }, '⚑ Marks ', barCount),
+    focusBtn);
+  const askBtn = h('button', { type: 'button', hidden: true, title: 'Allow the page to read and write the linked evaluation-01-markers.json',
+    onclick: () => reconnect() }, '↻ Load evaluation-01-markers.json');
+  bar.append(askBtn);
+  const panel = h('aside', { class: 'mk-ui mk-panel', hidden: true });
+  const io = h('textarea', { class: 'mk-io', rows: 6, hidden: true, spellcheck: 'false' });
+
+  function renderPanel() {
+    const n = marks.length;
+    barCount.textContent = '(' + n + ')' + (dirty() ? ' •' : '');
+    askBtn.hidden = fileState !== 'ask';
+    if (panel.hidden) return;
+    const count = id => marks.filter(m => m.level === id).length;
+    const groups = new Map(), lost = [];
+    const rows = marks.map(m => [resolve(m), m]).sort((a, b) =>
+      (a[0] ? a[0].b.idx * 1e6 + (a[0].s || 0) : 1e12) - (b[0] ? b[0].b.idx * 1e6 + (b[0].s || 0) : 1e12));
+    for (const [r, m] of rows) {
+      if (!r) { lost.push(m); continue; }
+      if (!groups.has(r.b.where)) groups.set(r.b.where, []);
+      groups.get(r.b.where).push(m);
+    }
+    const item = m => h('li', { class: 'mk-item', onclick: () => goTo(m) },
+      h('span', { class: 'mk-dot mk-L-' + m.level }),
+      h('span', { class: 'mk-kind' }, m.kind === 'text' ? '“…”' : '¶'),
+      h('span', { class: 'mk-quote' }, short(m.quote || '', 110)),
+      m.note ? h('div', { class: 'mk-item-note' }, m.note) : null);
+
+    panel.replaceChildren(...[
+      h('div', { class: 'mk-panel-head' }, h('b', {}, 'Study marks'),
+        h('button', { type: 'button', onclick: () => { panel.hidden = true; } }, '×')),
+      h('p', { class: 'mk-help' },
+        'Click ⚑ at the right of a paragraph, step, equation or table row. ',
+        'Or select words or a formula, then click “Mark selection”. ',
+        'Click a mark to change its level or to write a note. ',
+        'Press Ctrl+S (Mac: ⌘S) to export.'),
+      h('div', { class: 'mk-counts' }, LEVELS.map(l => h('span', {}, h('span', { class: 'mk-dot mk-L-' + l.id }), count(l.id) + ' ' + l.label))),
+      conflict ? h('div', { class: 'mk-warn' },
+        'evaluation-01-markers.json changed after your last local edit. ',
+        h('button', { type: 'button', onclick: () => { marks = committed.map(clean); localBase = base; conflict = false; save(); render(); } }, 'Use evaluation-01-markers.json'),
+        h('button', { type: 'button', onclick: () => { localBase = base; conflict = false; save(); renderPanel(); } }, 'Keep my local marks')) : null,
+      h('div', { class: 'mk-status' }, dirty()
+        ? 'Some marks are not in evaluation-01-markers.json yet. Click “Export”.'
+        : 'All marks are in evaluation-01-markers.json.'),
+      h('div', { class: 'mk-file' },
+        fileState === 'ok' ? 'Linked file: ' + fileHandle.name + ' (the page reads it at each load).'
+        : fileState === 'ask' ? h('span', {}, 'Linked file: ' + fileHandle.name + '. ', h('button', { type: 'button', onclick: () => reconnect() }, 'Load it'))
+        : canLink ? h('span', {}, 'No linked file. ', h('button', { type: 'button', onclick: linkFile, title: 'Pick context/evaluation-01/task01/evaluation-01-markers.json once. Then the page reads it at each load, and “Export” writes to it.' }, 'Link evaluation-01-markers.json…'))
+        : 'This browser cannot link a file. The page uses the marks in the build and in the browser.'),
+      h('div', { class: 'mk-actions' },
+        h('button', { type: 'button', onclick: exportMarks, title: 'Write evaluation-01-markers.json. If that is not possible, save, download or copy it. Shortcut: Ctrl+S (Mac: ⌘S).' }, 'Export (Ctrl+S)'),
+        h('button', { type: 'button', onclick: () => { io.hidden = false; io.value = ''; io.placeholder = 'Paste the text of a evaluation-01-markers.json file here, then click “Import”.'; io.focus(); } }, 'Paste…'),
+        h('button', { type: 'button', onclick: importMarks }, 'Import'),
+        h('button', { type: 'button', title: 'Drop the local changes', onclick: () => { if (dirty()) { marks = committed.map(clean); localBase = base; conflict = false; save(); render(); } } }, 'Revert to evaluation-01-markers.json')),
+      io,
+      [...groups].map(([where, list]) => h('div', { class: 'mk-group' }, h('div', { class: 'mk-where' }, where), h('ul', {}, list.map(item)))),
+      lost.length ? h('div', { class: 'mk-group' },
+        h('div', { class: 'mk-where' }, 'Not found: the text changed'),
+        h('ul', {}, lost.map(m => h('li', { class: 'mk-item mk-lost' }, h('span', { class: 'mk-dot mk-L-' + m.level }),
+          short(m.quote || '', 110), ' (' + m.where + ')', m.note ? h('div', { class: 'mk-item-note' }, m.note) : null)))) : null,
+    ].flat(Infinity).filter(x => x != null));
+    // Show the TeX in the list as formulas.
+    if (window.MathJax && window.MathJax.typesetPromise) window.MathJax.typesetPromise([panel]).catch(() => {});
+  }
+
+  // Export, in this order: 1. the linked file, 2. a save dialog, 3. a download (local copy only), 4. the clipboard.
+  async function exportMarks() {
+    const text = exportJSON(marks);
+    const written = () => { committed = marks.map(clean); base = fnv(JSON.stringify(committed)); localBase = base; conflict = false; save(); };
+    try {
+      if (fileHandle && await fileHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+        const w = await fileHandle.createWritable(); await w.write(text); await w.close();
+        fileState = 'ok'; written(); renderPanel(); flashStatus('Saved to ' + fileHandle.name + '. Commit it with git.');
+        return;
+      }
+      if ('showSaveFilePicker' in window) {
+        const hd = await showSaveFilePicker({ suggestedName: 'evaluation-01-markers.json', types: [{ description: 'evaluation-01-markers.json', accept: { 'application/json': ['.json'] } }] });
+        const w = await hd.createWritable(); await w.write(text); await w.close();
+        fileHandle = hd; await keepHandle(hd);
+        fileState = 'ok'; written(); renderPanel(); flashStatus('Saved to ' + hd.name + '. The page now reads this file at each load.');
+        return;
+      }
+    } catch (e) {
+      if (e.name === 'AbortError') return;  // the dialog was closed
+      /* blocked, for example in a sandboxed frame: use the next way */
+    }
+    if (location.protocol === 'file:') {
+      h('a', { href: URL.createObjectURL(new Blob([text], { type: 'application/json' })), download: 'evaluation-01-markers.json' }).click();
+      flashStatus('Downloaded. Move it to context/evaluation-01/task01/evaluation-01-markers.json.');
+      return;
+    }
+    const fallback = () => { io.hidden = false; io.value = text; io.focus(); io.select(); flashStatus('Copy the text below, then save it as context/evaluation-01/task01/evaluation-01-markers.json.'); };
+    try { navigator.clipboard.writeText(text).then(() => flashStatus('Copied. Save it as context/evaluation-01/task01/evaluation-01-markers.json, or paste it to Claude.'), fallback); }
+    catch (e) { fallback(); }
+  }
+  function importMarks() {
+    try {
+      const list = JSON.parse(io.value).marks;
+      if (!Array.isArray(list)) throw new Error('no "marks" list');
+      marks = list.map(clean); save(); io.hidden = true; render();
+    } catch (e) { flashStatus('Import failed: ' + e.message); }
+  }
+  function flashStatus(msg) { const s = panel.querySelector('.mk-status'); if (s) s.textContent = msg; toast(msg); }
+  // A short message at the bottom of the page, so that it shows also when the panel is closed.
+  function toast(msg) {
+    const t = h('div', { class: 'mk-ui mk-toast', role: 'status' }, msg);
+    document.body.append(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  // ------------------------------------------------------------------ events and start
+  function start() {
+    discover();
+    document.body.append(pop, selBtn, bar, panel);
+    pop.addEventListener('click', e => e.stopPropagation());  // its buttons rebuild the popover
+    let hot = null;
+    main.addEventListener('mouseover', e => {
+      const x = e.target.closest('.mk-host');
+      if (x !== hot) { if (hot) hot.classList.remove('mk-hot'); hot = x; if (x) x.classList.add('mk-hot'); }
+    });
+    document.addEventListener('mouseup', e => { if (!(e.target.closest && e.target.closest('.mk-ui'))) setTimeout(onSelect, 0); });
+    document.addEventListener('click', e => {
+      const hit = e.target.closest('[data-mk]');
+      if (hit && !e.target.closest('.mk-ui') && getSelection().isCollapsed) {
+        const m = marks.find(x => x.id === hit.dataset.mk);
+        if (m) { openPop(m, hit.getBoundingClientRect()); return; }
+      }
+      if (!pop.hidden && !e.target.closest('.mk-pop, .mk-flag, .mk-selbtn')) closePop();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closePop(); selBtn.hidden = true; } });
+    // Shortcut: Ctrl+S (Mac: Cmd+S) exports the marks, in the place of the browser "Save page".
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); exportMarks(); }
+    });
+    if (conflict && !dirty()) { localBase = base; conflict = false; save(); }  // new evaluation-01-markers.json equals the local marks
+    render();
+    autoLoad();
+  }
+
+  window.addEventListener('load', () => {
+    const mj = window.MathJax && window.MathJax.startup && window.MathJax.startup.promise;
+    (mj || Promise.resolve()).then(() => {
+      try { for (const item of window.MathJax.startup.document.math) texOf.set(item.typesetRoot, item.math); } catch (e) { /* no MathJax */ }
+      start();
+    });
+  });
+})();
+</script>
+</body>
+</html>

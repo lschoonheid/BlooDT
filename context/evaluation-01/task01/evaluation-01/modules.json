@@ -1,0 +1,415 @@
+[
+  {
+    "module": "(package)",
+    "path": "src/digital_twin_engineering/__init__.py",
+    "lines": 0,
+    "doc": "",
+    "imports": [],
+    "imported_by": []
+  },
+  {
+    "module": "ablation",
+    "path": "src/digital_twin_engineering/ablation.py",
+    "lines": 77,
+    "doc": "Ablation: what each group of forecaster inputs is worth.",
+    "imports": [
+      "channels",
+      "cohort",
+      "config",
+      "evaluation",
+      "forecasting",
+      "pipeline"
+    ],
+    "imported_by": [
+      "cli"
+    ]
+  },
+  {
+    "module": "channels",
+    "path": "src/digital_twin_engineering/channels.py",
+    "lines": 262,
+    "doc": "Channels: logical signals in canonical units, put on a causal grid per case.",
+    "imports": [
+      "vitaldb_cache"
+    ],
+    "imported_by": [
+      "ablation",
+      "cli",
+      "cohort",
+      "config",
+      "dataset",
+      "features",
+      "inventory",
+      "live.replayer",
+      "live.twin",
+      "targets",
+      "verification"
+    ]
+  },
+  {
+    "module": "cli",
+    "path": "src/digital_twin_engineering/cli.py",
+    "lines": 107,
+    "doc": "`dte`: the pipeline's command line. Run `uv run dte --help`.",
+    "imports": [
+      "ablation",
+      "channels",
+      "cohort",
+      "config",
+      "dataset",
+      "inventory",
+      "live",
+      "live.replayer",
+      "pipeline",
+      "verification"
+    ],
+    "imported_by": []
+  },
+  {
+    "module": "cohort",
+    "path": "src/digital_twin_engineering/cohort.py",
+    "lines": 112,
+    "doc": "Cohorts: named, reproducible case sets, and an explorer for choosing them.",
+    "imports": [
+      "channels",
+      "inventory",
+      "patients",
+      "stages"
+    ],
+    "imported_by": [
+      "ablation",
+      "cli",
+      "pipeline"
+    ]
+  },
+  {
+    "module": "config",
+    "path": "src/digital_twin_engineering/config.py",
+    "lines": 118,
+    "doc": "Pipeline configuration, loaded from a YAML file such as configs/default.yaml.",
+    "imports": [
+      "channels",
+      "experts"
+    ],
+    "imported_by": [
+      "ablation",
+      "cli",
+      "dataset",
+      "live.replayer",
+      "live.twin",
+      "pipeline",
+      "verification"
+    ]
+  },
+  {
+    "module": "dataset",
+    "path": "src/digital_twin_engineering/dataset.py",
+    "lines": 133,
+    "doc": "Training data: one row per decision point, per case, cached per case.",
+    "imports": [
+      "channels",
+      "config",
+      "experts",
+      "features",
+      "labels",
+      "patients",
+      "stages",
+      "targets"
+    ],
+    "imported_by": [
+      "cli",
+      "pipeline",
+      "verification"
+    ]
+  },
+  {
+    "module": "evaluation",
+    "path": "src/digital_twin_engineering/evaluation.py",
+    "lines": 119,
+    "doc": "Honest evaluation: every model is compared with a do-nothing-clever baseline.",
+    "imports": [
+      "forecasting",
+      "suggestion",
+      "targets"
+    ],
+    "imported_by": [
+      "ablation",
+      "pipeline"
+    ]
+  },
+  {
+    "module": "experts",
+    "path": "src/digital_twin_engineering/experts/__init__.py",
+    "lines": 152,
+    "doc": "Expert models: mechanistic models stepped alongside a case.",
+    "imports": [
+      "experts.anesthesim",
+      "experts.pas",
+      "patients"
+    ],
+    "imported_by": [
+      "config",
+      "dataset",
+      "live.twin"
+    ]
+  },
+  {
+    "module": "experts.anesthesim",
+    "path": "src/digital_twin_engineering/experts/anesthesim.py",
+    "lines": 412,
+    "doc": "Expert ported from AnestheSIM 1.0.0 (MATLAB/Simulink; github.com/izabirs/AnestheSIM).",
+    "imports": [
+      "experts.baseline",
+      "patients"
+    ],
+    "imported_by": [
+      "experts",
+      "live.twin"
+    ]
+  },
+  {
+    "module": "experts.baseline",
+    "path": "src/digital_twin_engineering/experts/baseline.py",
+    "lines": 56,
+    "doc": "Pre-dose baselines: a patient's MAP and HR before any drug, as known live.",
+    "imports": [],
+    "imported_by": [
+      "experts.anesthesim",
+      "experts.pas"
+    ]
+  },
+  {
+    "module": "experts.pas",
+    "path": "src/digital_twin_engineering/experts/pas.py",
+    "lines": 83,
+    "doc": "Expert backed by the Python Anesthesia Simulator (PAS).",
+    "imports": [
+      "experts.baseline",
+      "patients"
+    ],
+    "imported_by": [
+      "experts"
+    ]
+  },
+  {
+    "module": "features",
+    "path": "src/digital_twin_engineering/features.py",
+    "lines": 78,
+    "doc": "Forecaster inputs at decision points, from what was observed up to each point.",
+    "imports": [
+      "channels",
+      "patients"
+    ],
+    "imported_by": [
+      "dataset",
+      "live.twin"
+    ]
+  },
+  {
+    "module": "forecasting",
+    "path": "src/digital_twin_engineering/forecasting.py",
+    "lines": 110,
+    "doc": "Forecasters: one LightGBM model per (target, horizon).",
+    "imports": [
+      "splits",
+      "targets"
+    ],
+    "imported_by": [
+      "ablation",
+      "evaluation",
+      "pipeline",
+      "suggestion"
+    ]
+  },
+  {
+    "module": "inventory",
+    "path": "src/digital_twin_engineering/inventory.py",
+    "lines": 108,
+    "doc": "What every case has: its tracks (from file headers) and the anaesthetics it",
+    "imports": [
+      "channels",
+      "stages",
+      "vitaldb_cache"
+    ],
+    "imported_by": [
+      "cli",
+      "cohort"
+    ]
+  },
+  {
+    "module": "labels",
+    "path": "src/digital_twin_engineering/labels.py",
+    "lines": 66,
+    "doc": "Labelling what happened in a case: hypotension events and interventions.",
+    "imports": [],
+    "imported_by": [
+      "dataset",
+      "targets"
+    ]
+  },
+  {
+    "module": "live",
+    "path": "src/digital_twin_engineering/live/__init__.py",
+    "lines": 7,
+    "doc": "The live layer: Replayer -> MQTT -> Twin -> InfluxDB -> Grafana (services outlined).",
+    "imports": [],
+    "imported_by": [
+      "cli"
+    ]
+  },
+  {
+    "module": "live.replayer",
+    "path": "src/digital_twin_engineering/live/replayer.py",
+    "lines": 72,
+    "doc": "Replays a VitalDB case's raw records into a twin as if live.",
+    "imports": [
+      "channels",
+      "config",
+      "live.twin",
+      "patients",
+      "pipeline",
+      "vitaldb_cache"
+    ],
+    "imported_by": [
+      "cli"
+    ]
+  },
+  {
+    "module": "live.twin",
+    "path": "src/digital_twin_engineering/live/twin.py",
+    "lines": 173,
+    "doc": "The twin: follows one case live, from raw records to forecasts and suggestions.",
+    "imports": [
+      "channels",
+      "config",
+      "experts",
+      "experts.anesthesim",
+      "features",
+      "patients"
+    ],
+    "imported_by": [
+      "live.replayer"
+    ]
+  },
+  {
+    "module": "patients",
+    "path": "src/digital_twin_engineering/patients.py",
+    "lines": 45,
+    "doc": "Patient covariates and identities from VitalDB's clinical_data table.",
+    "imports": [
+      "vitaldb_cache"
+    ],
+    "imported_by": [
+      "cohort",
+      "dataset",
+      "experts",
+      "experts.anesthesim",
+      "experts.pas",
+      "features",
+      "live.replayer",
+      "live.twin",
+      "verification"
+    ]
+  },
+  {
+    "module": "pipeline",
+    "path": "src/digital_twin_engineering/pipeline.py",
+    "lines": 103,
+    "doc": "End-to-end training run: cohort -> rows -> forecasters -> suggesters -> evaluation.",
+    "imports": [
+      "cohort",
+      "config",
+      "dataset",
+      "evaluation",
+      "forecasting",
+      "splits",
+      "suggestion"
+    ],
+    "imported_by": [
+      "ablation",
+      "cli",
+      "live.replayer"
+    ]
+  },
+  {
+    "module": "splits",
+    "path": "src/digital_twin_engineering/splits.py",
+    "lines": 19,
+    "doc": "Splits by patient (subjectid), so no patient's cases sit on both sides.",
+    "imports": [],
+    "imported_by": [
+      "forecasting",
+      "pipeline",
+      "suggestion"
+    ]
+  },
+  {
+    "module": "stages",
+    "path": "src/digital_twin_engineering/stages.py",
+    "lines": 61,
+    "doc": "Per-case cache of pipeline stage outputs, keyed by the stage's config.",
+    "imports": [],
+    "imported_by": [
+      "cohort",
+      "dataset",
+      "inventory"
+    ]
+  },
+  {
+    "module": "suggestion",
+    "path": "src/digital_twin_engineering/suggestion.py",
+    "lines": 70,
+    "doc": "Intervention suggestions: what a clinician would typically change now, per drug.",
+    "imports": [
+      "forecasting",
+      "splits"
+    ],
+    "imported_by": [
+      "evaluation",
+      "pipeline"
+    ]
+  },
+  {
+    "module": "targets",
+    "path": "src/digital_twin_engineering/targets.py",
+    "lines": 68,
+    "doc": "Targets: what forecasters predict. Add a vital by adding an entry to TARGETS.",
+    "imports": [
+      "channels",
+      "labels"
+    ],
+    "imported_by": [
+      "dataset",
+      "evaluation",
+      "forecasting"
+    ]
+  },
+  {
+    "module": "verification",
+    "path": "src/digital_twin_engineering/verification.py",
+    "lines": 81,
+    "doc": "Expert fidelity: how closely each expert tracks the real case.",
+    "imports": [
+      "channels",
+      "config",
+      "dataset",
+      "patients"
+    ],
+    "imported_by": [
+      "cli"
+    ]
+  },
+  {
+    "module": "vitaldb_cache",
+    "path": "src/digital_twin_engineering/vitaldb_cache.py",
+    "lines": 182,
+    "doc": "Local cache of the VitalDB dataset (PhysioNet, ~95 GB).",
+    "imports": [],
+    "imported_by": [
+      "channels",
+      "inventory",
+      "live.replayer",
+      "patients"
+    ]
+  }
+]

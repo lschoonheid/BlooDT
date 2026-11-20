@@ -1,0 +1,99 @@
+/* ---- Study marks (marks.js) */
+:root { --mk-struggle: #e34948; --mk-unsure: #eda100; --mk-ok: #1baf7a;
+        --mk-struggle-bg: #fbe0e0; --mk-unsure-bg: #fcefc9; --mk-ok-bg: #d6f2e5; }
+
+/* flag at the right of each block: visible on hover, always visible when marked */
+.mk-host { position: relative; }
+.mk-eqwrap { display: block; }
+.mk-flag { position: absolute; top: 2px; right: -30px; width: 22px; height: 22px; padding: 0;
+           border: 0; border-radius: 4px; background: transparent; color: var(--muted);
+           font: 14px/22px system-ui, sans-serif; cursor: pointer; opacity: 0; transition: opacity .12s; }
+li.mk-host > .mk-flag { right: -54px; }  /* a step and its first paragraph: two columns of flags */
+tr .mk-flag { position: static; margin-left: 6px; }
+.mk-hot > .mk-flag, tr.mk-hot .mk-flag, .mk-flag:focus-visible { opacity: 1; }
+.mk-flag:hover { background: var(--panel); color: var(--ink); }
+
+/* a marked block: a coloured bar at the left and a light background */
+.mk-host.mk-L-struggle { box-shadow: -9px 0 0 -6px var(--mk-struggle); background-color: #fdf4f4; }
+.mk-host.mk-L-unsure   { box-shadow: -9px 0 0 -6px var(--mk-unsure);   background-color: #fefaef; }
+.mk-host.mk-L-ok       { box-shadow: -9px 0 0 -6px var(--mk-ok);       background-color: #f2fbf7; }
+.mk-host[class*="mk-L-"] > .mk-flag, tr[class*="mk-L-"] .mk-flag { opacity: 1; }
+.mk-L-struggle > .mk-flag, tr.mk-L-struggle .mk-flag { color: var(--mk-struggle); }
+.mk-L-unsure   > .mk-flag, tr.mk-L-unsure .mk-flag   { color: var(--mk-unsure); }
+.mk-L-ok       > .mk-flag, tr.mk-L-ok .mk-flag       { color: var(--mk-ok); }
+.mk-note > .mk-flag::after, tr.mk-note .mk-flag::after { content: "✎"; font-size: 10px; margin-left: -2px; }
+
+/* a marked selection */
+mark.mk-hl { color: inherit; padding: 0 1px; border-radius: 2px; cursor: pointer; }
+mark.mk-hl.mk-L-struggle, mjx-container.mk-hlm.mk-L-struggle { background: var(--mk-struggle-bg); }
+mark.mk-hl.mk-L-unsure,   mjx-container.mk-hlm.mk-L-unsure   { background: var(--mk-unsure-bg); }
+mark.mk-hl.mk-L-ok,       mjx-container.mk-hlm.mk-L-ok       { background: var(--mk-ok-bg); }
+mjx-container.mk-hlm { cursor: pointer; border-radius: 3px; }
+
+/* focus filter and the jump target */
+body.mk-focus .mk-dim { opacity: .25; transition: opacity .2s; }
+body.mk-focus .mk-dim:hover { opacity: .7; }
+.mk-flash { outline: 2px solid var(--s1); outline-offset: 3px; transition: outline-color 1s; }
+
+/* shared look of the tool */
+.mk-ui { font: 13px/1.45 system-ui, sans-serif; }
+.mk-ui button { font: inherit; }
+.mk-selbtn, .mk-bar button, .mk-pop button, .mk-panel button {
+  padding: 3px 10px; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); cursor: pointer; }
+.mk-ui button:hover { border-color: var(--ink2); }
+.mk-ui button.mk-on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.mk-selbtn { position: absolute; z-index: 65; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.mk-selbtn.mk-err { color: var(--ink2); cursor: default; }
+
+.mk-bar { position: fixed; right: 16px; bottom: 16px; z-index: 50; display: flex; gap: 6px; }
+.mk-bar button { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+
+.mk-pop { position: absolute; z-index: 70; width: 300px; background: #fff; border: 1px solid var(--rule);
+          border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.15); padding: 10px 12px; }
+.mk-pop-head { color: var(--ink2); margin-bottom: 8px; word-break: break-word; }
+.mk-levels { display: flex; gap: 6px; margin-bottom: 8px; }
+.mk-pop .mk-lv.mk-L-struggle.mk-on { background: var(--mk-struggle); border-color: var(--mk-struggle); color: #fff; }
+.mk-pop .mk-lv.mk-L-unsure.mk-on   { background: var(--mk-unsure);   border-color: var(--mk-unsure);   color: #fff; }
+.mk-pop .mk-lv.mk-L-ok.mk-on       { background: var(--mk-ok);       border-color: var(--mk-ok);       color: #fff; }
+.mk-pop textarea, .mk-io { width: 100%; font: 12px/1.4 ui-monospace, monospace; border: 1px solid var(--rule); border-radius: 4px; padding: 5px; }
+.mk-pop textarea { font-family: system-ui, sans-serif; font-size: 13px; }
+.mk-pop-foot { display: flex; justify-content: space-between; margin-top: 6px; }
+
+.mk-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 60; width: min(380px, 92vw); overflow: auto;
+            background: #fff; border-left: 1px solid var(--rule); box-shadow: -4px 0 18px rgba(0,0,0,.08); padding: 14px 16px 70px; }
+.mk-panel-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; }
+.mk-help { color: var(--ink2); margin: 8px 0; }
+.mk-counts { display: flex; gap: 14px; margin: 8px 0; }
+.mk-status { color: var(--ink2); margin: 8px 0; }
+.mk-warn { background: #fdf3ee; border-left: 3px solid var(--s2); padding: 6px 8px; margin: 8px 0; }
+.mk-warn button { margin: 4px 6px 0 0; }
+.mk-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.mk-group { margin-top: 14px; }
+.mk-where { font-weight: 600; color: var(--ink2); border-bottom: 1px solid var(--rule); padding-bottom: 2px; }
+.mk-group ul { list-style: none; margin: 4px 0; padding: 0; }
+.mk-item { padding: 5px 4px; border-radius: 4px; cursor: pointer; }
+.mk-item:hover { background: var(--panel); }
+.mk-item.mk-lost { cursor: default; color: var(--muted); }
+.mk-kind { color: var(--muted); margin-right: 6px; }
+.mk-item-note { margin: 2px 0 0 22px; font-style: italic; color: var(--ink2); }
+.mk-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.mk-dot.mk-L-struggle { background: var(--mk-struggle); }
+.mk-dot.mk-L-unsure   { background: var(--mk-unsure); }
+.mk-dot.mk-L-ok       { background: var(--mk-ok); }
+
+/* A short message at the bottom of the page (export with Ctrl+S) */
+.mk-toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 10000;
+            background: #2b2a27; color: #fff; padding: 8px 16px; border-radius: 6px;
+            font: 14px system-ui, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+
+/* ---- eval-01: dark theme only. These rules replace the light colours above
+   (from the dark block of homework02/theme.css). */
+:root { --mk-struggle-bg: #5a2526; --mk-unsure-bg: #574515; --mk-ok-bg: #1d4a39; }
+.mk-host.mk-L-struggle { background-color: #2c1c1d; }
+.mk-host.mk-L-unsure   { background-color: #2b2516; }
+.mk-host.mk-L-ok       { background-color: #172a23; }
+.mk-pop, .mk-panel, .mk-selbtn, .mk-bar button, .mk-pop button, .mk-panel button { background: var(--panel); color: var(--ink); }
+.mk-ui button.mk-on { background: var(--ink); color: var(--surface); }
+.mk-pop textarea, .mk-io { background: var(--surface); color: var(--ink); }
+.mk-warn { background: #34221a; }
+.mk-pop, .mk-panel { box-shadow: 0 6px 24px rgba(0,0,0,.5); }
