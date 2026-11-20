@@ -45,7 +45,7 @@ services:
     <<: *app
     depends_on: [mosquitto, influxdb]
     restart: unless-stopped
-    command: [serve, --run, "${RUN:-sixth}", --host, mosquitto, --influx, "http://influxdb:8086"]
+    command: [serve, --run, "${RUN:-lean}", --host, mosquitto, --influx, "http://influxdb:8086"]
     environment:
       INFLUX_TOKEN: twin-token
       ALERT_THRESHOLD: ${ALERT_THRESHOLD:-}
@@ -54,7 +54,7 @@ services:
   replayer:
     <<: *app
     profiles: [replay]
-    entrypoint: [uv, run, --no-sync, dte, publish, --run, "${RUN:-sixth}", --host, mosquitto]
+    entrypoint: [uv, run, --no-sync, dte, publish, --run, "${RUN:-lean}", --host, mosquitto]
     volumes: ["./models:/app/models:ro", "./data/vitaldb:/app/data/vitaldb:ro"]
 
 volumes:

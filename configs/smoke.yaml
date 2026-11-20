@@ -1,10 +1,9 @@
 # Tiny, fast config for checking the pipeline end to end on a few cases.
 channels: [map, hr, bis]
 experts:
-  - {kind: pas, name: pas_schnider, baseline: pre_dose}
-  - {kind: anesthesim, name: asim_greco, baseline: pre_dose}
-expert_lookahead_s: [300]
-targets: [map, hypotension]
+  - {kind: pas, name: pas_marsh, model_propo: Marsh_modified, model_remi: Minto, baseline: pre_dose}
+  - {kind: anesthesim, name: asim_greco, baseline: pre_dose, calibrate_bis: true}
+targets: [map_1min, hypotension]
 horizons_s: [300]
 decision_every_s: 30
 features:

@@ -633,7 +633,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"MAP\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"map_1min\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"1-min MAP\")",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"

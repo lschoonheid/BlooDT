@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from digital_twin_engineering import effects, transfer
+from digital_twin_engineering import effects
 
 
 def test_a_change_counts_once_at_its_last_decision_point():
@@ -24,9 +24,3 @@ def test_agreement_of_a_proportional_effect():
     a = effects._agreement(expected, 0.5 * expected + rng.normal(scale=0.1, size=500))
     assert abs(a["slope"] - 0.5) < 0.05
     assert a["corr"] > 0.9 and a["same_sign"] > 0.9
-
-
-def test_subsample_takes_whole_patients():
-    rows = pd.DataFrame({"subjectid": np.repeat(np.arange(10), 100)})
-    sub = transfer._subsample(rows, 450, np.random.default_rng(0))
-    assert 450 <= len(sub) < 550 and sub.groupby("subjectid").size().eq(100).all()

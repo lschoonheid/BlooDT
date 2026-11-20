@@ -35,6 +35,7 @@ import numpy as np
 from ..channels import STALENESS
 from ..config import Config
 from ..patients import Covariates
+from ..targets import TARGETS
 from ..verification import COMPARISONS, varvel
 from . import messages
 from .influx import Point
@@ -45,8 +46,6 @@ VITALS = (
     "propofol_target", "remifentanil_target", "propofol_ce_pump", "remifentanil_ce_pump",
 )
 EXPERT_SIGNALS = ("bis", "map", "hr", "propofol_ce", "remifentanil_ce")
-VALUES = ("map", "bis", "hr")  # forecast value targets
-FRESH_S = 10  # a measurement counts as the realised value if this fresh (as targets)
 REFERENCE_FRESH_S = 5  # as verification
 CHANGE_LOOKBACK_S = 120
 SETTINGS = ("propofol_target", "remifentanil_target")
@@ -70,7 +69,7 @@ def from_run(run: str, sink, alert_threshold: float | None = None, **kwargs) -> 
 
     config, models = load_run(run)
     clean = json.loads((MODELS_DIR / run / "metrics.json").read_text())["clean"]
-    rmse = {s: clean[f"y.{s}@60"]["model"]["rmse"] for s in VALUES if f"y.{s}@60" in clean}
+    rmse = {s: clean[f"y.{s}@60"]["model"]["rmse"] for s in config.targets if f"y.{s}@60" in clean}
     if alert_threshold is None:
         alert_threshold = clean.get("y.hypotension@300", {}).get("model", {}).get("threshold@10%_alerts")
         if alert_threshold is None:
@@ -95,6 +94,7 @@ class TwinService:
         self.models = models
         self.sink = sink
         self.rmse_1min = rmse_1min
+        self.values = [name for name in config.targets if TARGETS[name].kind == "value"]
         self.alert_threshold = alert_threshold
         self.deviation_k = deviation_k
         self.window_s = window_s
@@ -172,16 +172,16 @@ class TwinService:
             points.append(Point("suggestion", tags | {"drug": drug}, fields, at))
 
         # forecasts come due: score them against what was measured, and against persistence
+        now = {s: _measured(case.twin, s) for s in self.values}
         case.issued[t] = d
         for h in horizons:
-            now = {s: row.get(s, np.nan) for s in VALUES}
-            case.pending.append((t + h, h, {s: d.get(f"{s}@{h}", np.nan) for s in VALUES}, now))
+            case.pending.append((t + h, h, {s: d.get(f"{s}@{h}", np.nan) for s in self.values}, now))
         while case.pending and case.pending[0][0] <= t:
             _, h, forecast, persistence = case.pending.popleft()
-            for s in VALUES:
-                if row.get(s + STALENESS, np.inf) <= FRESH_S and np.isfinite(forecast[s] + persistence[s]):
+            for s in self.values:
+                if np.isfinite(now[s] + forecast[s] + persistence[s]):
                     errors = case.errors.setdefault((s, h), [])
-                    errors.append((t, row[s] - forecast[s], row[s] - persistence[s]))
+                    errors.append((t, now[s] - forecast[s], now[s] - persistence[s]))
         case.pending = deque(sorted(case.pending, key=lambda p: p[0]))
         for (s, h), errors in case.errors.items():
             e = np.array(errors)
@@ -203,10 +203,10 @@ class TwinService:
             del case.issued[old]
         if earlier is not None:
             changed = _changed(case.twin, CHANGE_LOOKBACK_S)
-            for s in VALUES:
-                if f"{s}@60" not in earlier or row.get(s + STALENESS, np.inf) > FRESH_S:
+            for s in self.values:
+                if f"{s}@60" not in earlier or not np.isfinite(now[s]):
                     continue
-                residual = row[s] - earlier[f"{s}@60"]
+                residual = now[s] - earlier[f"{s}@60"]
                 threshold = self.deviation_k * self.rmse_1min.get(s, np.inf)
                 fields = {
                     "residual": residual, "threshold": threshold, "target_changed": changed,
@@ -214,6 +214,21 @@ class TwinService:
                 }
                 points.append(Point("deviation", tags | {"signal": s}, fields, at))
         return points
+
+
+def _measured(twin: Twin, name: str) -> float:
+    """A value target as measured now: its channel's fresh reading, or for a
+    smoothed target the median of the fresh readings over its window just past
+    (the target is centred on its time, so this lags it by half the window)."""
+    target = TARGETS[name]
+    n = round((target.smooth_s or twin.config.step_s) / twin.config.step_s)
+    recent = [
+        r[target.channel] for r in list(twin.buffer)[-n:]
+        if r.get(target.channel + STALENESS, np.inf) <= target.max_staleness_s
+    ]
+    if not recent or len(recent) < n // 2:
+        return math.nan
+    return float(np.median(recent))
 
 
 def _rmse(x: np.ndarray) -> float:

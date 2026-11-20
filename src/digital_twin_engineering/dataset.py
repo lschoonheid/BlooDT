@@ -49,9 +49,7 @@ def expert_signals(
 
     def compute():
         channels = case_channels(caseid, config, perturbed)
-        return experts.run(
-            [expert], channels, covariates(caseid), config.step_s, config.lookahead()
-        )
+        return experts.run([expert], channels, covariates(caseid), config.step_s)
 
     return stages.cached("experts", config.expert_key(spec, perturbed), caseid, compute)
 

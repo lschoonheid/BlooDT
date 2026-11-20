@@ -1,6 +1,6 @@
 """Forecasters: one LightGBM model per (target, horizon).
 
-Inputs are every `x.` column of the dataset rows (channels, staleness, expert
+Inputs are every `x.` column of the dataset rows (channels, expert
 signals, covariates, phase); LightGBM handles the NaNs that missing channels and
 inapplicable experts leave. Another model family can replace `_model` as long as
 it keeps fit/predict(_proba).
