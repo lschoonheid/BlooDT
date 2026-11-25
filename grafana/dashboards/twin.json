@@ -80,6 +80,22 @@
         },
         {
           "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"map_1min_lo\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"95% interval, 5 min ahead (lower)\"})",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "D",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"map_1min_hi\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"95% interval, 5 min ahead\"})",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "E",
           "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"nibp_map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"NIBP MAP\"})",
           "datasource": {
             "type": "influxdb",
@@ -126,6 +142,60 @@
                     10,
                     6
                   ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "95% interval, 5 min ahead"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8ab8ff"
+                }
+              },
+              {
+                "id": "custom.fillBelowTo",
+                "value": "95% interval, 5 min ahead (lower)"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 25
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "95% interval, 5 min ahead (lower)"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8ab8ff"
+                }
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": false,
+                  "viz": false
                 }
               }
             ]
@@ -234,7 +304,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"AnestheSIM (Greco)\"})",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"bis_lo\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"95% interval, 5 min ahead (lower)\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -242,6 +312,22 @@
         },
         {
           "refId": "D",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"bis_hi\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"95% interval, 5 min ahead\"})",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "E",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"AnestheSIM (Greco)\"})",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "F",
           "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"pas_eleveld\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"PAS (Eleveld)\"})",
           "datasource": {
             "type": "influxdb",
@@ -294,6 +380,60 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "95% interval, 5 min ahead"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8ab8ff"
+                }
+              },
+              {
+                "id": "custom.fillBelowTo",
+                "value": "95% interval, 5 min ahead (lower)"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 25
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "95% interval, 5 min ahead (lower)"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8ab8ff"
+                }
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": false,
+                  "viz": false
+                }
+              }
+            ]
           }
         ]
       },
@@ -336,6 +476,22 @@
             "type": "influxdb",
             "uid": "influx-twin"
           }
+        },
+        {
+          "refId": "C",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"hr_lo\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"95% interval, 5 min ahead (lower)\"})",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
+        },
+        {
+          "refId": "D",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"hr_hi\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"95% interval, 5 min ahead\"})",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-twin"
+          }
         }
       ],
       "fieldConfig": {
@@ -361,6 +517,60 @@
                     10,
                     6
                   ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "95% interval, 5 min ahead"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8ab8ff"
+                }
+              },
+              {
+                "id": "custom.fillBelowTo",
+                "value": "95% interval, 5 min ahead (lower)"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 25
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "95% interval, 5 min ahead (lower)"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8ab8ff"
+                }
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": false,
+                  "viz": false
                 }
               }
             ]

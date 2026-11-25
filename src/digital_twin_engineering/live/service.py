@@ -8,12 +8,15 @@ Measurements written, all tagged with the case:
 - vitals: the twin's grid values of the monitored channels, every second
 - expert: each expert's state (tag expert), every second
 - forecast: each forecast placed at the time it is for (tag horizon), so it can be
-  drawn over what was later measured
+  drawn over what was later measured; for value targets also `<target>_lo` and
+  `<target>_hi`, a 95% interval of forecast +- 1.96 test RMSEs at that horizon (one
+  width per target and horizon, not per patient state)
 - warning: hypotension probabilities per horizon and the alert, at decision points
 - suggestion: per drug (tag drug) the change probabilities, proposed settings and
   their expected effects
 - forecast_fidelity: rolling and whole-case RMSE of the forecasts that have come
-  due, against persistence (tags signal, horizon)
+  due, against persistence, and the share of them inside their 95% interval
+  (tags signal, horizon)
 - fidelity: Varvel metrics of each expert against the pump's Ce and the measured
   BIS and MAP, over the last window and the whole case (tags expert, signal, window)
 - deviation: measured value minus the 1-min forecast made a minute earlier; flagged
@@ -59,6 +62,7 @@ VITALS = (
 EXPERT_SIGNALS = ("bis", "map", "hr", "propofol_ce", "remifentanil_ce")
 REFERENCE_FRESH_S = 5  # as verification
 CHANGE_LOOKBACK_S = 120
+INTERVAL_Z = 1.96  # forecast intervals: 95% if the errors were normal
 SETTINGS = ("propofol_target", "remifentanil_target")
 
 
@@ -81,12 +85,18 @@ def from_run(run: str, sink, alert_threshold: float | None = None, **kwargs) -> 
     config, models = load_run(run)
     clean = json.loads((MODELS_DIR / run / "metrics.json").read_text())["clean"]
     # regression targets only: classification targets (hypotension) have no RMSE
-    rmse = {s: m["rmse"] for s in config.targets if "rmse" in (m := clean.get(f"y.{s}@60", {}).get("model", {}))}
+    rmse = {
+        (s, h): m["rmse"]
+        for s in config.targets
+        for h in config.horizons_s
+        if "rmse" in (m := clean.get(f"y.{s}@{h}", {}).get("model", {}))
+    }
     if alert_threshold is None:
         alert_threshold = clean.get("y.hypotension@300", {}).get("model", {}).get("threshold@10%_alerts")
         if alert_threshold is None:
             raise ValueError(f"run {run} predates alert thresholds in metrics.json; pass one")
-    return TwinService(config, models, sink, rmse, alert_threshold, **kwargs)
+    rmse_1min = {s: r for (s, h), r in rmse.items() if h == 60}
+    return TwinService(config, models, sink, rmse_1min, alert_threshold, rmse=rmse, **kwargs)
 
 
 class TwinService:
@@ -99,9 +109,12 @@ class TwinService:
         alert_threshold: float,
         deviation_k: float = 3.0,
         window_s: float = 600,
+        rmse: dict[tuple[str, int], float] | None = None,
     ):
         """`rmse_1min`: each value target's test RMSE at 1 min (sets the deviation
-        threshold); `alert_threshold`: the 5-min hypotension probability that alerts."""
+        threshold); `alert_threshold`: the 5-min hypotension probability that alerts;
+        `rmse`: test RMSE per (target, horizon), for the forecasts' 95% intervals
+        (none written without it)."""
         self.config = config
         self.models = models
         self.sink = sink
@@ -110,6 +123,7 @@ class TwinService:
         self.alert_threshold = alert_threshold
         self.deviation_k = deviation_k
         self.window_s = window_s
+        self.rmse = rmse or {}
         self.cases: dict[int, Case] = {}
 
     def handle(self, topic: str, payload: dict) -> None:
@@ -172,6 +186,10 @@ class TwinService:
         points = []
         for h in horizons:
             fields = {k.removesuffix(f"@{h}"): v for k, v in d.items() if k.endswith(f"@{h}") and "." not in k}
+            for s in self.values:
+                if s in fields and (s, h) in self.rmse:
+                    half = INTERVAL_Z * self.rmse[(s, h)]
+                    fields[f"{s}_lo"], fields[f"{s}_hi"] = fields[s] - half, fields[s] + half
             points.append(Point("forecast", tags | {"horizon": str(h)}, fields, at + h))
         risk = {f"p@{h}": d[f"hypotension@{h}"] for h in horizons if f"hypotension@{h}" in d}
         if "p@300" in risk:
@@ -205,6 +223,8 @@ class TwinService:
                 "rmse_case_persistence": _rmse(e[:, 2]),
                 "n_case": len(e),
             }
+            if (s, h) in self.rmse:  # share of measurements inside the 95% interval
+                fields["coverage_case"] = float(np.mean(np.abs(e[:, 1]) <= INTERVAL_Z * self.rmse[(s, h)]))
             points.append(Point("forecast_fidelity", tags | {"signal": s, "horizon": str(h)}, fields, at))
 
         for (expert, signal), pairs in case.pairs.items():
