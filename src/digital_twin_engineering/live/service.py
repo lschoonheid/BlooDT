@@ -42,8 +42,19 @@ from .influx import Point
 from .twin import Phases, Twin
 
 VITALS = (
-    "map", "sbp", "dbp", "hr", "bis", "sqi", "spo2", "etco2", "nibp_map",
-    "propofol_target", "remifentanil_target", "propofol_ce_pump", "remifentanil_ce_pump",
+    "map",
+    "sbp",
+    "dbp",
+    "hr",
+    "bis",
+    "sqi",
+    "spo2",
+    "etco2",
+    "nibp_map",
+    "propofol_target",
+    "remifentanil_target",
+    "propofol_ce_pump",
+    "remifentanil_ce_pump",
 )
 EXPERT_SIGNALS = ("bis", "map", "hr", "propofol_ce", "remifentanil_ce")
 REFERENCE_FRESH_S = 5  # as verification
@@ -69,7 +80,8 @@ def from_run(run: str, sink, alert_threshold: float | None = None, **kwargs) -> 
 
     config, models = load_run(run)
     clean = json.loads((MODELS_DIR / run / "metrics.json").read_text())["clean"]
-    rmse = {s: clean[f"y.{s}@60"]["model"]["rmse"] for s in config.targets if f"y.{s}@60" in clean}
+    # regression targets only: classification targets (hypotension) have no RMSE
+    rmse = {s: m["rmse"] for s in config.targets if "rmse" in (m := clean.get(f"y.{s}@60", {}).get("model", {}))}
     if alert_threshold is None:
         alert_threshold = clean.get("y.hypotension@300", {}).get("model", {}).get("threshold@10%_alerts")
         if alert_threshold is None:
@@ -187,8 +199,11 @@ class TwinService:
             e = np.array(errors)
             recent = e[e[:, 0] > t - self.window_s]
             fields = {
-                "rmse_window": _rmse(recent[:, 1]), "rmse_window_persistence": _rmse(recent[:, 2]),
-                "rmse_case": _rmse(e[:, 1]), "rmse_case_persistence": _rmse(e[:, 2]), "n_case": len(e),
+                "rmse_window": _rmse(recent[:, 1]),
+                "rmse_window_persistence": _rmse(recent[:, 2]),
+                "rmse_case": _rmse(e[:, 1]),
+                "rmse_case_persistence": _rmse(e[:, 2]),
+                "n_case": len(e),
             }
             points.append(Point("forecast_fidelity", tags | {"signal": s, "horizon": str(h)}, fields, at))
 
@@ -196,7 +211,9 @@ class TwinService:
             p = np.array(pairs)
             for window, sel in (("window", p[p[:, 0] > t - self.window_s]), ("case", p)):
                 fields = varvel(sel[:, 1], sel[:, 2]) if len(sel) else {}
-                points.append(Point("fidelity", tags | {"expert": expert, "signal": signal, "window": window}, fields, at))
+                points.append(
+                    Point("fidelity", tags | {"expert": expert, "signal": signal, "window": window}, fields, at)
+                )
 
         earlier = case.issued.pop(t - 60, None)
         for old in [k for k in case.issued if k < t - 60]:
@@ -209,7 +226,9 @@ class TwinService:
                 residual = now[s] - earlier[f"{s}@60"]
                 threshold = self.deviation_k * self.rmse_1min.get(s, np.inf)
                 fields = {
-                    "residual": residual, "threshold": threshold, "target_changed": changed,
+                    "residual": residual,
+                    "threshold": threshold,
+                    "target_changed": changed,
                     "flagged": bool(abs(residual) > threshold and not changed),
                 }
                 points.append(Point("deviation", tags | {"signal": s}, fields, at))
@@ -223,7 +242,8 @@ def _measured(twin: Twin, name: str) -> float:
     target = TARGETS[name]
     n = round((target.smooth_s or twin.config.step_s) / twin.config.step_s)
     recent = [
-        r[target.channel] for r in list(twin.buffer)[-n:]
+        r[target.channel]
+        for r in list(twin.buffer)[-n:]
         if r.get(target.channel + STALENESS, np.inf) <= target.max_staleness_s
     ]
     if not recent or len(recent) < n // 2:
