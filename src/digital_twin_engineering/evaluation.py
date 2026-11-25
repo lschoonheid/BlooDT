@@ -87,10 +87,28 @@ def forecaster(f: Forecaster, rows: pd.DataFrame, alert_rate: float = 0.1) -> di
         e = p[ok] - y[ok]
         return {"mae": float(np.abs(e).mean()), "rmse": float(np.sqrt((e**2).mean()))}
 
-    return {
+    result = {
         "n": len(y), "model": errors(pred),
         "baseline_persistence": errors(rows[target.persistence_column].to_numpy()),
     }
+    if (bounds := f.interval(rows)) is not None:
+        lo, hi = bounds
+        result["interval"] = {
+            "level": f.interval_level,
+            "coverage": float(np.mean((lo <= y) & (y <= hi))),
+            "mean_width": float(np.mean(hi - lo)),
+            # the fixed-width fallback (forecast +- z test RMSEs, as the live service
+            # draws for runs without interval models), at the same nominal level
+            "rmse_band_coverage": float(np.mean(np.abs(pred - y) <= _z(f.interval_level) * result["model"]["rmse"])),
+        }
+    return result
+
+
+def _z(level: float) -> float:
+    """The normal quantile of a central interval of coverage `level`."""
+    from statistics import NormalDist
+
+    return NormalDist().inv_cdf(0.5 + level / 2)
 
 
 def suggester(s: Suggester, rows: pd.DataFrame) -> dict:

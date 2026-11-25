@@ -43,6 +43,7 @@ perturbation:
 # hypotension AUROC 0.944 vs 0.942 for the defaults (400 trees, lr 0.05, 63 leaves),
 # and faster (each tree sees 30% of the features).
 model: {n_estimators: 400, learning_rate: 0.03, min_child_samples: 200, colsample_bytree: 0.3, reg_lambda: 5.0}
+forecast_interval: 0.95   # value forecasts' prediction interval (quantile models); null for none
 folds: 5
 test_fraction: 0.2
 seed: 0

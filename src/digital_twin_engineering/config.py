@@ -42,6 +42,8 @@ class Config:
     suggestion: SuggestionConfig = SuggestionConfig()
     perturbation: Perturbation | None = None  # training-time sensor faults
     model: dict[str, Any] = field(default_factory=dict)  # LightGBM parameters
+    # value forecasts: central coverage of the interval from quantile models (None: no interval)
+    forecast_interval: float | None = 0.95
     folds: int = 5
     test_fraction: float = 0.2
     seed: int = 0

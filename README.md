@@ -156,7 +156,9 @@ uv run dte serve --run lean --host localhost --influx http://localhost:8086
 uv run dte publish 17 --run lean --speed 30
 ```
 
-The dashboard shows each forecast where it comes due, drawn dashed over what was measured; the
+The dashboard shows each forecast where it comes due, drawn dashed over what was measured, with
+its 95% interval (from the run's quantile models; runs trained without them get forecast ±1.96 test
+RMSEs instead, and the forecast-fidelity table shows how often the measurement fell inside); the
 hypotension risk and alerts; estimated drug concentrations against the pumps'; the suggestions with
 their expected effects; unexplained deviations; and fidelity so far. Runs trained before the alert
 threshold was saved (`fifth` and older) need `ALERT_THRESHOLD=0.575`. After editing

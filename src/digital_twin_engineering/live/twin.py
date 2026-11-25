@@ -151,6 +151,9 @@ class Twin:
             value = float(f.predict(x)[0])
             x[f.output] = value
             out[f.column.removeprefix("y.")] = value
+            if (bounds := f.interval(x)) is not None:
+                out[f"{f.target}_lo@{f.horizon_s}"] = float(bounds[0][0])
+                out[f"{f.target}_hi@{f.horizon_s}"] = float(bounds[1][0])
         for s in self.suggesters:
             suggestion = s.suggest(x).iloc[0]
             for k, v in suggestion.items():

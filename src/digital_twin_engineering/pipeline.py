@@ -71,7 +71,7 @@ def train(config: Config, cohort: Cohort, run: str, jobs: int = 16) -> Path:
     for target in config.targets:
         for h in config.horizons_s:
             f, oof = forecasting.fit_with_out_of_fold(
-                train_rows, target, h, config.model, config.folds, config.seed
+                train_rows, target, h, config.model, config.folds, config.seed, config.forecast_interval
             )
             train_rows[f.output] = oof
             for name, rows in test_sets.items():

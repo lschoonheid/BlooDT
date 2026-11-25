@@ -9,8 +9,9 @@ Measurements written, all tagged with the case:
 - expert: each expert's state (tag expert), every second
 - forecast: each forecast placed at the time it is for (tag horizon), so it can be
   drawn over what was later measured; for value targets also `<target>_lo` and
-  `<target>_hi`, a 95% interval of forecast +- 1.96 test RMSEs at that horizon (one
-  width per target and horizon, not per patient state)
+  `<target>_hi`, a 95% interval: the run's quantile models where it has them (see
+  forecasting), else forecast +- 1.96 test RMSEs at that horizon (one width per
+  target and horizon, not per patient state)
 - warning: hypotension probabilities per horizon and the alert, at decision points
 - suggestion: per drug (tag drug) the change probabilities, proposed settings and
   their expected effects
@@ -71,7 +72,7 @@ class Case:
     twin: Twin
     start: float  # epoch s of case time 0
     issued: dict[float, dict] = field(default_factory=dict)  # decision t -> decision
-    pending: deque = field(default_factory=deque)  # (due t, horizon, forecasts, persistence)
+    pending: deque = field(default_factory=deque)  # (due t, horizon, forecasts, persistence, intervals)
     errors: dict = field(default_factory=dict)  # (signal, horizon) -> [(model, persistence)]
     pairs: dict = field(default_factory=dict)  # (expert, signal) -> [(t, reference, expert)]
 
@@ -180,6 +181,16 @@ class TwinService:
                     key = (runner.expert.name, signal)
                     case.pairs.setdefault(key, []).append((t, row[reference], row[column]))
 
+    def _interval(self, d: dict, s: str, h: int) -> tuple[float, float] | None:
+        """The 95% interval of the forecast of `s` at horizon `h`: the twin's own from
+        quantile models, else forecast +- INTERVAL_Z test RMSEs, else None."""
+        if f"{s}_lo@{h}" in d:
+            return d[f"{s}_lo@{h}"], d[f"{s}_hi@{h}"]
+        if f"{s}@{h}" in d and (s, h) in self.rmse:
+            half = INTERVAL_Z * self.rmse[(s, h)]
+            return d[f"{s}@{h}"] - half, d[f"{s}@{h}"] + half
+        return None
+
     def _decide(self, case: Case, d: dict, row: dict, t: float, tags: dict) -> list[Point]:
         at = case.start + t
         horizons = self.config.horizons_s
@@ -187,9 +198,8 @@ class TwinService:
         for h in horizons:
             fields = {k.removesuffix(f"@{h}"): v for k, v in d.items() if k.endswith(f"@{h}") and "." not in k}
             for s in self.values:
-                if s in fields and (s, h) in self.rmse:
-                    half = INTERVAL_Z * self.rmse[(s, h)]
-                    fields[f"{s}_lo"], fields[f"{s}_hi"] = fields[s] - half, fields[s] + half
+                if (bounds := self._interval(d, s, h)) is not None:
+                    fields[f"{s}_lo"], fields[f"{s}_hi"] = bounds
             points.append(Point("forecast", tags | {"horizon": str(h)}, fields, at + h))
         risk = {f"p@{h}": d[f"hypotension@{h}"] for h in horizons if f"hypotension@{h}" in d}
         if "p@300" in risk:
@@ -205,13 +215,17 @@ class TwinService:
         now = {s: _measured(case.twin, s) for s in self.values}
         case.issued[t] = d
         for h in horizons:
-            case.pending.append((t + h, h, {s: d.get(f"{s}@{h}", np.nan) for s in self.values}, now))
+            forecast = {s: d.get(f"{s}@{h}", np.nan) for s in self.values}
+            intervals = {s: self._interval(d, s, h) for s in self.values}
+            case.pending.append((t + h, h, forecast, now, intervals))
         while case.pending and case.pending[0][0] <= t:
-            _, h, forecast, persistence = case.pending.popleft()
+            _, h, forecast, persistence, intervals = case.pending.popleft()
             for s in self.values:
                 if np.isfinite(now[s] + forecast[s] + persistence[s]):
                     errors = case.errors.setdefault((s, h), [])
-                    errors.append((t, now[s] - forecast[s], now[s] - persistence[s]))
+                    lo, hi = intervals[s] or (np.nan, np.nan)
+                    inside = float(lo <= now[s] <= hi) if np.isfinite(lo + hi) else np.nan
+                    errors.append((t, now[s] - forecast[s], now[s] - persistence[s], inside))
         case.pending = deque(sorted(case.pending, key=lambda p: p[0]))
         for (s, h), errors in case.errors.items():
             e = np.array(errors)
@@ -223,8 +237,8 @@ class TwinService:
                 "rmse_case_persistence": _rmse(e[:, 2]),
                 "n_case": len(e),
             }
-            if (s, h) in self.rmse:  # share of measurements inside the 95% interval
-                fields["coverage_case"] = float(np.mean(np.abs(e[:, 1]) <= INTERVAL_Z * self.rmse[(s, h)]))
+            if np.isfinite(e[:, 3]).any():  # share of measurements inside the interval issued for them
+                fields["coverage_case"] = float(np.nanmean(e[:, 3]))
             points.append(Point("forecast_fidelity", tags | {"signal": s, "horizon": str(h)}, fields, at))
 
         for (expert, signal), pairs in case.pairs.items():
