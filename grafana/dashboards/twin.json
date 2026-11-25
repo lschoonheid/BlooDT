@@ -64,7 +64,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"MAP measured\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"MAP measured\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -72,7 +72,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"map_1min\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"1-min MAP forecast 5 min ago\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"map_1min\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"1-min MAP forecast 5 min ago\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -80,7 +80,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"nibp_map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"NIBP MAP\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"nibp_map\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"NIBP MAP\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -158,7 +158,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"within 5 min\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"within 5 min\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -166,7 +166,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@60\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"within 1 min\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@60\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"within 1 min\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -174,7 +174,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@600\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"within 10 min\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"warning\" and r.case == \"${case}\" and r._field == \"p@600\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"within 10 min\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -218,7 +218,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"bis\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"BIS measured\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"bis\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"BIS measured\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -226,7 +226,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"bis\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"BIS forecast 5 min ago\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"bis\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"BIS forecast 5 min ago\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -234,7 +234,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"AnestheSIM (Greco)\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"AnestheSIM (Greco)\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -242,7 +242,7 @@
         },
         {
           "refId": "D",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"pas_eleveld\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"PAS (Eleveld)\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"bis\" and r.expert == \"pas_eleveld\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"PAS (Eleveld)\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -323,7 +323,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"hr\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"HR measured\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"hr\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"HR measured\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -331,7 +331,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"hr\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"HR forecast 5 min ago\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"forecast\" and r.case == \"${case}\" and r._field == \"hr\" and r.horizon == \"300\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"HR forecast 5 min ago\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -393,7 +393,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"propofol_target\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"TCI target\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"propofol_target\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"TCI target\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -401,7 +401,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"propofol_ce_pump\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, pump\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"propofol_ce_pump\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"Ce, pump\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -409,7 +409,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"propofol_ce\" and r.expert == \"pas_marsh\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, PAS Marsh\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"propofol_ce\" and r.expert == \"pas_marsh\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"Ce, PAS Marsh\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -417,7 +417,7 @@
         },
         {
           "refId": "D",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"propofol_ce\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, AnestheSIM\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"propofol_ce\" and r.expert == \"asim_greco\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"Ce, AnestheSIM\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -459,7 +459,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"remifentanil_target\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"TCI target\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"remifentanil_target\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"TCI target\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -467,7 +467,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"remifentanil_ce_pump\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, pump\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"vitals\" and r.case == \"${case}\" and r._field == \"remifentanil_ce_pump\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"Ce, pump\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -475,7 +475,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"remifentanil_ce\" and r.expert == \"pas_marsh\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"Ce, PAS Minto\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"expert\" and r.case == \"${case}\" and r._field == \"remifentanil_ce\" and r.expert == \"pas_marsh\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"Ce, PAS Minto\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -517,7 +517,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_decrease\" and r.drug == \"propofol\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"propofol lower\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_decrease\" and r.drug == \"propofol\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"propofol lower\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -525,7 +525,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_increase\" and r.drug == \"propofol\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"propofol raise\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_increase\" and r.drug == \"propofol\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"propofol raise\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -533,7 +533,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_decrease\" and r.drug == \"remifentanil\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"remifentanil lower\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_decrease\" and r.drug == \"remifentanil\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"remifentanil lower\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -541,7 +541,7 @@
         },
         {
           "refId": "D",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_increase\" and r.drug == \"remifentanil\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"remifentanil raise\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"suggestion\" and r.case == \"${case}\" and r._field == \"p_increase\" and r.drug == \"remifentanil\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"remifentanil raise\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -617,7 +617,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"bis\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"BIS\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"bis\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"BIS\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -625,7 +625,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"hr\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"HR\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"hr\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"HR\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"
@@ -633,7 +633,7 @@
         },
         {
           "refId": "C",
-          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"map_1min\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> set(key: \"_field\", value: \"1-min MAP\")",
+          "query": "from(bucket: \"twin\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"deviation\" and r.case == \"${case}\" and r._field == \"residual\" and r.signal == \"map_1min\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"]) |> rename(columns: {_value: \"1-min MAP\"})",
           "datasource": {
             "type": "influxdb",
             "uid": "influx-twin"

@@ -22,7 +22,8 @@ def series(measurement: str, field: str, label: str, where: str = "", fn: str = 
         f'  |> filter(fn: (r) => r._measurement == "{measurement}" and r.case == "${{case}}" '
         f'and r._field == "{field}"{extra})\n'
         f"  |> aggregateWindow(every: v.windowPeriod, fn: {fn}, createEmpty: false)\n"
-        f'  |> keep(columns: ["_time", "_value"]) |> set(key: "_field", value: "{label}")'
+        # Grafana names a Flux series after its value column, so the label goes there
+        f'  |> keep(columns: ["_time", "_value"]) |> rename(columns: {{_value: "{label}"}})'
     )
 
 
