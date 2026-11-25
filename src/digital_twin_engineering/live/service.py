@@ -8,12 +8,16 @@ Measurements written, all tagged with the case:
 - vitals: the twin's grid values of the monitored channels, every second
 - expert: each expert's state (tag expert), every second
 - forecast: each forecast placed at the time it is for (tag horizon), so it can be
-  drawn over what was later measured
+  drawn over what was later measured; for value targets also `<target>_lo` and
+  `<target>_hi`, a 95% interval: the run's quantile models where it has them (see
+  forecasting), else forecast +- 1.96 test RMSEs at that horizon (one width per
+  target and horizon, not per patient state)
 - warning: hypotension probabilities per horizon and the alert, at decision points
 - suggestion: per drug (tag drug) the change probabilities, proposed settings and
   their expected effects
 - forecast_fidelity: rolling and whole-case RMSE of the forecasts that have come
-  due, against persistence (tags signal, horizon)
+  due, against persistence, and the share of them inside their 95% interval
+  (tags signal, horizon)
 - fidelity: Varvel metrics of each expert against the pump's Ce and the measured
   BIS and MAP, over the last window and the whole case (tags expert, signal, window)
 - deviation: measured value minus the 1-min forecast made a minute earlier; flagged
@@ -35,20 +39,31 @@ import numpy as np
 from ..channels import STALENESS
 from ..config import Config
 from ..patients import Covariates
+from ..targets import TARGETS
 from ..verification import COMPARISONS, varvel
 from . import messages
 from .influx import Point
 from .twin import Phases, Twin
 
 VITALS = (
-    "map", "sbp", "dbp", "hr", "bis", "sqi", "spo2", "etco2", "nibp_map",
-    "propofol_target", "remifentanil_target", "propofol_ce_pump", "remifentanil_ce_pump",
+    "map",
+    "sbp",
+    "dbp",
+    "hr",
+    "bis",
+    "sqi",
+    "spo2",
+    "etco2",
+    "nibp_map",
+    "propofol_target",
+    "remifentanil_target",
+    "propofol_ce_pump",
+    "remifentanil_ce_pump",
 )
 EXPERT_SIGNALS = ("bis", "map", "hr", "propofol_ce", "remifentanil_ce")
-VALUES = ("map", "bis", "hr")  # forecast value targets
-FRESH_S = 10  # a measurement counts as the realised value if this fresh (as targets)
 REFERENCE_FRESH_S = 5  # as verification
 CHANGE_LOOKBACK_S = 120
+INTERVAL_Z = 1.96  # forecast intervals: 95% if the errors were normal
 SETTINGS = ("propofol_target", "remifentanil_target")
 
 
@@ -57,7 +72,7 @@ class Case:
     twin: Twin
     start: float  # epoch s of case time 0
     issued: dict[float, dict] = field(default_factory=dict)  # decision t -> decision
-    pending: deque = field(default_factory=deque)  # (due t, horizon, forecasts, persistence)
+    pending: deque = field(default_factory=deque)  # (due t, horizon, forecasts, persistence, intervals)
     errors: dict = field(default_factory=dict)  # (signal, horizon) -> [(model, persistence)]
     pairs: dict = field(default_factory=dict)  # (expert, signal) -> [(t, reference, expert)]
 
@@ -70,12 +85,19 @@ def from_run(run: str, sink, alert_threshold: float | None = None, **kwargs) -> 
 
     config, models = load_run(run)
     clean = json.loads((MODELS_DIR / run / "metrics.json").read_text())["clean"]
-    rmse = {s: clean[f"y.{s}@60"]["model"]["rmse"] for s in VALUES if f"y.{s}@60" in clean}
+    # regression targets only: classification targets (hypotension) have no RMSE
+    rmse = {
+        (s, h): m["rmse"]
+        for s in config.targets
+        for h in config.horizons_s
+        if "rmse" in (m := clean.get(f"y.{s}@{h}", {}).get("model", {}))
+    }
     if alert_threshold is None:
         alert_threshold = clean.get("y.hypotension@300", {}).get("model", {}).get("threshold@10%_alerts")
         if alert_threshold is None:
             raise ValueError(f"run {run} predates alert thresholds in metrics.json; pass one")
-    return TwinService(config, models, sink, rmse, alert_threshold, **kwargs)
+    rmse_1min = {s: r for (s, h), r in rmse.items() if h == 60}
+    return TwinService(config, models, sink, rmse_1min, alert_threshold, rmse=rmse, **kwargs)
 
 
 class TwinService:
@@ -88,16 +110,21 @@ class TwinService:
         alert_threshold: float,
         deviation_k: float = 3.0,
         window_s: float = 600,
+        rmse: dict[tuple[str, int], float] | None = None,
     ):
         """`rmse_1min`: each value target's test RMSE at 1 min (sets the deviation
-        threshold); `alert_threshold`: the 5-min hypotension probability that alerts."""
+        threshold); `alert_threshold`: the 5-min hypotension probability that alerts;
+        `rmse`: test RMSE per (target, horizon), for the forecasts' 95% intervals
+        (none written without it)."""
         self.config = config
         self.models = models
         self.sink = sink
         self.rmse_1min = rmse_1min
+        self.values = [name for name in config.targets if TARGETS[name].kind == "value"]
         self.alert_threshold = alert_threshold
         self.deviation_k = deviation_k
         self.window_s = window_s
+        self.rmse = rmse or {}
         self.cases: dict[int, Case] = {}
 
     def handle(self, topic: str, payload: dict) -> None:
@@ -154,12 +181,25 @@ class TwinService:
                     key = (runner.expert.name, signal)
                     case.pairs.setdefault(key, []).append((t, row[reference], row[column]))
 
+    def _interval(self, d: dict, s: str, h: int) -> tuple[float, float] | None:
+        """The 95% interval of the forecast of `s` at horizon `h`: the twin's own from
+        quantile models, else forecast +- INTERVAL_Z test RMSEs, else None."""
+        if f"{s}_lo@{h}" in d:
+            return d[f"{s}_lo@{h}"], d[f"{s}_hi@{h}"]
+        if f"{s}@{h}" in d and (s, h) in self.rmse:
+            half = INTERVAL_Z * self.rmse[(s, h)]
+            return d[f"{s}@{h}"] - half, d[f"{s}@{h}"] + half
+        return None
+
     def _decide(self, case: Case, d: dict, row: dict, t: float, tags: dict) -> list[Point]:
         at = case.start + t
         horizons = self.config.horizons_s
         points = []
         for h in horizons:
             fields = {k.removesuffix(f"@{h}"): v for k, v in d.items() if k.endswith(f"@{h}") and "." not in k}
+            for s in self.values:
+                if (bounds := self._interval(d, s, h)) is not None:
+                    fields[f"{s}_lo"], fields[f"{s}_hi"] = bounds
             points.append(Point("forecast", tags | {"horizon": str(h)}, fields, at + h))
         risk = {f"p@{h}": d[f"hypotension@{h}"] for h in horizons if f"hypotension@{h}" in d}
         if "p@300" in risk:
@@ -172,48 +212,77 @@ class TwinService:
             points.append(Point("suggestion", tags | {"drug": drug}, fields, at))
 
         # forecasts come due: score them against what was measured, and against persistence
+        now = {s: _measured(case.twin, s) for s in self.values}
         case.issued[t] = d
         for h in horizons:
-            now = {s: row.get(s, np.nan) for s in VALUES}
-            case.pending.append((t + h, h, {s: d.get(f"{s}@{h}", np.nan) for s in VALUES}, now))
+            forecast = {s: d.get(f"{s}@{h}", np.nan) for s in self.values}
+            intervals = {s: self._interval(d, s, h) for s in self.values}
+            case.pending.append((t + h, h, forecast, now, intervals))
         while case.pending and case.pending[0][0] <= t:
-            _, h, forecast, persistence = case.pending.popleft()
-            for s in VALUES:
-                if row.get(s + STALENESS, np.inf) <= FRESH_S and np.isfinite(forecast[s] + persistence[s]):
+            _, h, forecast, persistence, intervals = case.pending.popleft()
+            for s in self.values:
+                if np.isfinite(now[s] + forecast[s] + persistence[s]):
                     errors = case.errors.setdefault((s, h), [])
-                    errors.append((t, row[s] - forecast[s], row[s] - persistence[s]))
+                    lo, hi = intervals[s] or (np.nan, np.nan)
+                    inside = float(lo <= now[s] <= hi) if np.isfinite(lo + hi) else np.nan
+                    errors.append((t, now[s] - forecast[s], now[s] - persistence[s], inside))
         case.pending = deque(sorted(case.pending, key=lambda p: p[0]))
         for (s, h), errors in case.errors.items():
             e = np.array(errors)
             recent = e[e[:, 0] > t - self.window_s]
             fields = {
-                "rmse_window": _rmse(recent[:, 1]), "rmse_window_persistence": _rmse(recent[:, 2]),
-                "rmse_case": _rmse(e[:, 1]), "rmse_case_persistence": _rmse(e[:, 2]), "n_case": len(e),
+                "rmse_window": _rmse(recent[:, 1]),
+                "rmse_window_persistence": _rmse(recent[:, 2]),
+                "rmse_case": _rmse(e[:, 1]),
+                "rmse_case_persistence": _rmse(e[:, 2]),
+                "n_case": len(e),
             }
+            if np.isfinite(e[:, 3]).any():  # share of measurements inside the interval issued for them
+                fields["coverage_case"] = float(np.nanmean(e[:, 3]))
             points.append(Point("forecast_fidelity", tags | {"signal": s, "horizon": str(h)}, fields, at))
 
         for (expert, signal), pairs in case.pairs.items():
             p = np.array(pairs)
             for window, sel in (("window", p[p[:, 0] > t - self.window_s]), ("case", p)):
                 fields = varvel(sel[:, 1], sel[:, 2]) if len(sel) else {}
-                points.append(Point("fidelity", tags | {"expert": expert, "signal": signal, "window": window}, fields, at))
+                points.append(
+                    Point("fidelity", tags | {"expert": expert, "signal": signal, "window": window}, fields, at)
+                )
 
         earlier = case.issued.pop(t - 60, None)
         for old in [k for k in case.issued if k < t - 60]:
             del case.issued[old]
         if earlier is not None:
             changed = _changed(case.twin, CHANGE_LOOKBACK_S)
-            for s in VALUES:
-                if f"{s}@60" not in earlier or row.get(s + STALENESS, np.inf) > FRESH_S:
+            for s in self.values:
+                if f"{s}@60" not in earlier or not np.isfinite(now[s]):
                     continue
-                residual = row[s] - earlier[f"{s}@60"]
+                residual = now[s] - earlier[f"{s}@60"]
                 threshold = self.deviation_k * self.rmse_1min.get(s, np.inf)
                 fields = {
-                    "residual": residual, "threshold": threshold, "target_changed": changed,
+                    "residual": residual,
+                    "threshold": threshold,
+                    "target_changed": changed,
                     "flagged": bool(abs(residual) > threshold and not changed),
                 }
                 points.append(Point("deviation", tags | {"signal": s}, fields, at))
         return points
+
+
+def _measured(twin: Twin, name: str) -> float:
+    """A value target as measured now: its channel's fresh reading, or for a
+    smoothed target the median of the fresh readings over its window just past
+    (the target is centred on its time, so this lags it by half the window)."""
+    target = TARGETS[name]
+    n = round((target.smooth_s or twin.config.step_s) / twin.config.step_s)
+    recent = [
+        r[target.channel]
+        for r in list(twin.buffer)[-n:]
+        if r.get(target.channel + STALENESS, np.inf) <= target.max_staleness_s
+    ]
+    if not recent or len(recent) < n // 2:
+        return math.nan
+    return float(np.median(recent))
 
 
 def _rmse(x: np.ndarray) -> float:

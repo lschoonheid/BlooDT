@@ -22,7 +22,8 @@ def series(measurement: str, field: str, label: str, where: str = "", fn: str = 
         f'  |> filter(fn: (r) => r._measurement == "{measurement}" and r.case == "${{case}}" '
         f'and r._field == "{field}"{extra})\n'
         f"  |> aggregateWindow(every: v.windowPeriod, fn: {fn}, createEmpty: false)\n"
-        f'  |> keep(columns: ["_time", "_value"]) |> set(key: "_field", value: "{label}")'
+        # Grafana names a Flux series after its value column, so the label goes there
+        f'  |> keep(columns: ["_time", "_value"]) |> rename(columns: {{_value: "{label}"}})'
     )
 
 
@@ -82,11 +83,35 @@ def tablepanel(title, query, pos, decimals=2):
     }
 
 
+def band(field: str, label: str, where: str = "") -> tuple[list[str], list[dict]]:
+    """A forecast's 95% interval as a shaded band named `label`: its queries and the
+    overrides that fill between its bounds and hide their lines."""
+    lo, hi = f"{label} (lower)", label
+    hidden = [
+        {"id": "custom.lineWidth", "value": 0},
+        {"id": "color", "value": {"mode": "fixed", "fixedColor": "#8ab8ff"}},
+    ]
+    overrides = [
+        {
+            "matcher": {"id": "byName", "options": hi},
+            "properties": hidden + [{"id": "custom.fillBelowTo", "value": lo}, {"id": "custom.fillOpacity", "value": 25}],
+        },
+        {
+            "matcher": {"id": "byName", "options": lo},
+            "properties": hidden + [{"id": "custom.hideFrom", "value": {"legend": True, "tooltip": False, "viz": False}}],
+        },
+    ]
+    return [series("forecast", f"{field}_lo", lo, where), series("forecast", f"{field}_hi", hi, where)], overrides
+
+
 def pos(x, y, w=12, h=8):
     return {"x": x, "y": y, "w": w, "h": h}
 
 
 FORECAST_5 = 'r.horizon == "300"'
+MAP_BAND = band("map_1min", "95% interval, 5 min ahead", FORECAST_5)
+BIS_BAND = band("bis", "95% interval, 5 min ahead", FORECAST_5)
+HR_BAND = band("hr", "95% interval, 5 min ahead", FORECAST_5)
 
 panels = [
     timeseries(
@@ -94,10 +119,11 @@ panels = [
         [
             series("vitals", "map", "MAP measured"),
             series("forecast", "map_1min", "1-min MAP forecast 5 min ago", FORECAST_5),
+            *MAP_BAND[0],
             series("vitals", "nibp_map", "NIBP MAP"),
         ],
         pos(0, 0), "mmHg", thresholds=[(65, "red")],
-        overrides=[dashed("1-min MAP forecast 5 min ago")],
+        overrides=[dashed("1-min MAP forecast 5 min ago"), *MAP_BAND[1]],
     ),
     timeseries(
         "Hypotension risk (MAP < 65 for 1 min within the horizon)",
@@ -113,19 +139,21 @@ panels = [
         [
             series("vitals", "bis", "BIS measured"),
             series("forecast", "bis", "BIS forecast 5 min ago", FORECAST_5),
+            *BIS_BAND[0],
             series("expert", "bis", "AnestheSIM (Greco)", 'r.expert == "asim_greco"'),
             series("expert", "bis", "PAS (Eleveld)", 'r.expert == "pas_eleveld"'),
         ],
         pos(0, 8), thresholds=[(40, "green"), (60, "orange")],
-        overrides=[dashed("BIS forecast 5 min ago")],
+        overrides=[dashed("BIS forecast 5 min ago"), *BIS_BAND[1]],
     ),
     timeseries(
         "Heart rate",
         [
             series("vitals", "hr", "HR measured"),
             series("forecast", "hr", "HR forecast 5 min ago", FORECAST_5),
+            *HR_BAND[0],
         ],
-        pos(12, 8), "bpm", overrides=[dashed("HR forecast 5 min ago")],
+        pos(12, 8), "bpm", overrides=[dashed("HR forecast 5 min ago"), *HR_BAND[1]],
     ),
     timeseries(
         "Propofol (µg/mL)",
@@ -170,7 +198,7 @@ panels = [
         [
             series("deviation", "residual", "BIS", 'r.signal == "bis"'),
             series("deviation", "residual", "HR", 'r.signal == "hr"'),
-            series("deviation", "residual", "MAP", 'r.signal == "map"'),
+            series("deviation", "residual", "1-min MAP", 'r.signal == "map_1min"'),
         ],
         pos(0, 32),
     ),

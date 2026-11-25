@@ -19,8 +19,7 @@ interaction surface and a MAP/HR model. Deviations from the Simulink model:
   `stim_onset_s` is given.
 - `calibrate_bis` fits the patient's hypnotic sensitivity online (calibration.py):
   the BIS surface sees the hypnotic concentrations times a factor that the
-  measured BIS keeps adjusting; `calibrate_map` likewise scales the unified MAP
-  model's propofol effect. Not in AnestheSIM.
+  measured BIS keeps adjusting. Not in AnestheSIM.
 """
 
 import math
@@ -43,22 +42,12 @@ MAPLESON_AGE_DECAY = -0.00269  # 1/year, VolatileModel.m
 # ~20%/h; BIS noise is set to 25 (the monitor's ~8 over ~10 correlated samples)
 BIS_CALIBRATION = dict(prior_sd=0.5, drift_sd_per_hour=0.2, noise_sd=25.0)
 BIS_FRESH_RANGE = (10.0, 98.0)  # readings outside are artefacts or awake noise
-# calibrate_map (unified MAP model only): the propofol Emax factor; MAP noise 30 mmHg
-# for the same reason (the arterial line's beat-to-beat and artefact swings)
-MAP_CALIBRATION = dict(prior_sd=0.7, drift_sd_per_hour=0.2, noise_sd=30.0)
-MAP_FRESH_RANGE = (30.0, 160.0)
 
 BIS_PARAMS = {
     "greco": dict(prop=(3.34, 1.2), remi=(2.41, 1.2), e0=95.0, emax=70.0, gamma=1.2),
     "bouillon": dict(prop=(4.47, 1.43), remi=(19.3, 1.43), e0=97.4, emax=97.4, gamma=1.43),
     "minto": dict(prop=(3.35, 1.58), remi=(7.96, 7.85), e0=93.0, emax=83.0, gamma=1.0),
 }
-
-
-def _calibration(defaults: dict, option: bool | dict) -> dict | None:
-    if not option:
-        return None
-    return defaults | (option if isinstance(option, dict) else {})
 
 
 def _lbm(c: Covariates) -> float:
@@ -166,14 +155,13 @@ class AnestheSimExpert:
     plus Joachim pressor effect) or "unified" (three-drug effect-site model).
     HR always comes from the turnover model.
 
-    `lookahead` gives the signals after holding the current inputs for a while,
-    without disturbing the stepped state: the model's own forecast of where the
-    patient is heading if nothing changes. With `whatif` factors it also forecasts
-    each TCI target scaled by each factor, steering its own PK model to the new
-    target like a TCI pump (see `_tci_rate`): what a target change would do.
+    `scenario` gives the signals after holding the current inputs for a while,
+    without disturbing the stepped state, optionally with one drug steered to a new
+    TCI target by its own PK model like a TCI pump (see `_tci_rate`): what a
+    target change would do.
     """
 
-    version = 1  # 1: what-ifs include the current target (x1)
+    version = 2  # 2: no lookaheads or what-ifs among the signals
     inputs = (
         "propofol_dose",
         "remifentanil_dose",
@@ -205,9 +193,7 @@ class AnestheSimExpert:
         hr0: float | None = None,  # /min; default: 70.8
         stim_onset_s: float | None = None,  # s from case start; None: no stimulation
         baseline: str = "covariates",  # or "pre_dose": MAP0/HR0 observed before the first dose
-        whatif: tuple[float, ...] = (),  # TCI target factors to forecast, e.g. (0.8, 1.2)
         calibrate_bis: bool | dict = False,  # True, or BIS_CALIBRATION overrides
-        calibrate_map: bool | dict = False,  # True, or MAP_CALIBRATION overrides
     ):
         if bis_model not in BIS_PARAMS:
             raise ValueError(f"unknown bis_model {bis_model!r}")
@@ -226,21 +212,14 @@ class AnestheSimExpert:
         self.inputs = type(self).inputs
         if baseline == "pre_dose":
             self.inputs += baselines.INPUTS
-        # the current target (x1) too: what-if effects are measured against keeping it
-        self.whatif = tuple(sorted(set(whatif) | {1.0})) if whatif else ()
-        if self.whatif:
-            self.inputs += tuple(TCI_DRUGS[d]["setting"] for d in TCI_DRUGS)
-        self.calibrate_bis = _calibration(BIS_CALIBRATION, calibrate_bis)
-        self.calibrate_map = _calibration(MAP_CALIBRATION, calibrate_map)
-        if self.calibrate_map and map_model != "unified":
-            raise ValueError("calibrate_map needs map_model unified")
+        self.calibrate_bis = (
+            BIS_CALIBRATION | (calibrate_bis if isinstance(calibrate_bis, dict) else {})
+            if calibrate_bis else None
+        )
         self.signals = type(self).signals
         if self.calibrate_bis:
             self.inputs += ("bis", "bis__staleness")
             self.signals += ("bis_sensitivity",)
-        if self.calibrate_map:
-            self.inputs += ("map", "map__staleness")
-            self.signals += ("map_sensitivity",)
 
     def reset(self, covariates: Covariates, step_s: float) -> None:
         c = covariates
@@ -282,8 +261,6 @@ class AnestheSimExpert:
         self.pre_dose = baselines.PreDoseBaseline() if self.baseline == "pre_dose" else None
         self.bis_filter = LogScaleFilter(**self.calibrate_bis, step_s=step_s) if self.calibrate_bis else None
         self.bis_scale = 1.0
-        self.map_filter = LogScaleFilter(**self.calibrate_map, step_s=step_s) if self.calibrate_map else None
-        self.map_scale = 1.0
         # TCI: Ce after TCI_LEAD_S of a constant rate is free + gain * rate
         ad_lead, reach = np.eye(13), np.zeros((13, 5))
         for _ in range(max(1, round(TCI_LEAD_S / step_s))):
@@ -353,50 +330,16 @@ class AnestheSimExpert:
             self.bis_filter.step(bis if fresh else None, lambda theta: self._bis(*ce, scale=math.exp(theta)))
             self.bis_scale = self.bis_filter.scale
             y = dict(y) | {"bis_sensitivity": self.bis_scale}
-        if self.map_filter is not None:
-            map_ = inputs["map"]
-            lo, hi = MAP_FRESH_RANGE
-            fresh = inputs["map__staleness"] < self.step_s and lo <= map_ <= hi
-            ce_p, ce_r, cc_ne = float(self.x[3]), float(self.x[7]), float(self.x[9]) / self.ne["v1"]
-            self.map_filter.step(map_ if fresh else None, lambda theta: self._map_unified(ce_p, ce_r, cc_ne, math.exp(theta)))
-            self.map_scale = self.map_filter.scale
-            y = dict(y) | {"map_sensitivity": self.map_scale}
         return y
 
-    def _map_unified(self, ce_p: float, ce_r: float, cc_ne: float, scale: float | None = None) -> float:
+    def _map_unified(self, ce_p: float, ce_r: float, cc_ne: float) -> float:
         # mapUnified.m / mapUnifiedParameters.m: the propofol/remifentanil values
         # are AnestheSIM's illustrative ones (no published set); NE on exogenous Cc.
-        # `scale`: the patient's propofol Emax factor
-        scale = self.map_scale if scale is None else scale
         ce_p, ce_r = max(ce_p, 0.0), max(ce_r, 0.0)
         c50 = max(2.0 * (1 - 0.5 * ce_r / (ce_r + 2.0)), 1e-6)  # C50P, kR, C50R
-        return self.map0 - 30.0 * scale * ce_p / (ce_p + c50) + self._ne_emax(max(cc_ne, 0.0))  # EmaxP
+        return self.map0 - 30.0 * ce_p / (ce_p + c50) + self._ne_emax(max(cc_ne, 0.0))  # EmaxP
 
-    lookahead_signals = ("propofol_ce", "remifentanil_ce", "bis", "map", "hr")
-
-    def lookahead_columns(self, horizons_s: tuple[int, ...]) -> list[str]:
-        """`<signal>@<h>` holding everything, `<signal>@<h>.<drug>_x<factor>` per what-if."""
-        names = []
-        for suffix in [""] + [f".{d}_x{f:g}" for d in TCI_DRUGS for f in self.whatif]:
-            names += [f"{s}@{h}{suffix}" for h in sorted(horizons_s) for s in self.lookahead_signals]
-        return names
-
-    def lookahead(self, held: Mapping[str, float], horizons_s: tuple[int, ...]) -> dict[str, float]:
-        """Signals after holding `held` (one step's inputs) for each horizon, and per
-        what-if with that drug steered to its scaled target instead; starting from
-        the current state, which is left as it was. What-ifs for a drug whose pump
-        isn't running are NaN."""
-        out = self.scenario(held, horizons_s)
-        for drug, spec in TCI_DRUGS.items():
-            for f in self.whatif:
-                target = held[spec["setting"]]
-                suffix = f".{drug}_x{f:g}"
-                if target == target and target > 0:
-                    ahead = self.scenario(held, horizons_s, drug, target * f)
-                    out |= {k + suffix: v for k, v in ahead.items()}
-                else:
-                    out |= {f"{s}@{h}{suffix}": np.nan for h in horizons_s for s in self.lookahead_signals}
-        return out
+    scenario_signals = ("propofol_ce", "remifentanil_ce", "bis", "map", "hr")
 
     def scenario(
         self,
@@ -416,7 +359,7 @@ class AnestheSimExpert:
                     inputs[TCI_DRUGS[drug]["dose"]] = self._tci_rate(drug, target) * self.step_s
                 y = self._advance(inputs)
             done = round(h / self.step_s)
-            out |= {f"{s}@{h}": y[s] for s in self.lookahead_signals}
+            out |= {f"{s}@{h}": y[s] for s in self.scenario_signals}
         self.x, self.u, self.ne_queue, self.map_turnover, self.hr, self.t = state
         return out
 

@@ -9,7 +9,7 @@ import time
 import pandas as pd
 
 from . import cohort as cohorts
-from . import ablation, dataset, inventory, pipeline, verification
+from . import dataset, inventory, pipeline, verification
 from .channels import CHANNELS
 from .config import Config
 
@@ -50,13 +50,6 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--run", required=True, help="name of the output folder under models/")
     p.add_argument("-j", "--jobs", type=int, default=16)
 
-    p = sub.add_parser("ablate", help="retrain forecasters without each group of inputs")
-    p.add_argument("config")
-    p.add_argument("cohort")
-    p.add_argument("--run", required=True, help="name of the output folder under models/")
-    p.add_argument("--only", nargs="+", help="variants to run (default: all)")
-    p.add_argument("-j", "--jobs", type=int, default=16)
-
     p = sub.add_parser("replay", help="replay a case through the twin with a trained run's models")
     p.add_argument("caseid", type=int)
     p.add_argument("--run", required=True, help="the training run under models/")
@@ -85,13 +78,6 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("--deviation-k", type=float, default=3.0, help="flag residuals over k test RMSEs")
     p.add_argument("--once", action="store_true", help="exit after the first case ends")
-
-    p = sub.add_parser("transfer", help="train on one patient group, test on another")
-    p.add_argument("config")
-    p.add_argument("cohort")
-    p.add_argument("--run", required=True, help="output directory under models/")
-    p.add_argument("--only", nargs="+", help="splits to run (default: all)")
-    p.add_argument("-j", "--jobs", type=int, default=16)
 
     p = sub.add_parser("effects", help="validate the what-ifs against what followed target changes")
     p.add_argument("--run", required=True, help="the training run under models/ (its test cases)")
@@ -149,21 +135,11 @@ def main(argv: list[str] | None = None) -> None:
             svc = service.from_run(args.run, sink, args.alert_threshold, deviation_k=args.deviation_k)
             print(f"twin service on {args.host}:{args.port} -> {args.influx}", flush=True)
             service.serve(svc, args.host, args.port, args.once)
-        case "transfer":
-            from . import transfer
-
-            results = transfer.run(Config.from_yaml(args.config), base, args.run, args.only, args.jobs)
-            print(transfer.table(results).to_string(index=False, float_format="{:.3f}".format))
         case "effects":
             from . import effects
 
             result = effects.run(args.run, args.jobs)
             print(effects.summary(result).to_string(index=False, float_format="{:.2f}".format))
-        case "ablate":
-            results = ablation.run(Config.from_yaml(args.config), base, args.run, args.only, args.jobs)
-            for test in results["all"]:
-                if test != "features":
-                    print(f"\n{test}:\n" + ablation.table(results, test).to_string(float_format="{:.3f}".format))
 
 
 if __name__ == "__main__":

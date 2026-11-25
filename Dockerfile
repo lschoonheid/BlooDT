@@ -4,8 +4,10 @@ FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY pyproject.toml uv.lock README.md ./
+# only the lock files before installing dependencies, so other edits reuse that layer
+COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
+COPY README.md ./
 COPY src ./src
 COPY configs ./configs
 RUN uv sync --frozen --no-dev

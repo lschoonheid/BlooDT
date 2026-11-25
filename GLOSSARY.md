@@ -42,12 +42,8 @@ _Avoid_: Mixture of experts, MoE, simulator
 One time series produced by an expert model for a case, such as propofol effect-site concentration or model-predicted BIS.
 _Avoid_: Expert feature, prediction
 
-**Expert lookahead**:
-An expert model's own forecast at a decision point: where its signals would be after a horizon if the current infusion rates were kept.
-_Avoid_: Simulation, what-if (for this specific forecast)
-
 **What-if**:
-An expert lookahead in which one target concentration is changed, steered by the expert's own model as a TCI pump would; its difference from the plain lookahead is the change's expected effect.
+An expert model run ahead from the current moment with one target concentration changed, steered by the expert's own model as a TCI pump would; its difference from the same run with the target kept is the change's expected effect.
 _Avoid_: Counterfactual (in prose), simulation
 
 **Pre-dose baseline**:

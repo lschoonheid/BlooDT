@@ -4,7 +4,35 @@ What the pipeline achieves on the TIVA arterial-line cohort (`cohorts/tiva-artli
 
 Every model is compared with a baseline that needs no learning. The "sensor faults" columns score the same test patients seen through simulated faults: up to 10 s extra delay per channel and 4 dropouts per hour of 30 s on average.
 
-Numbers below are from run `sixth` (`configs/default.yaml` as of 2026-11-20, `models/sixth/metrics.json`) unless a section names another run. Run `sixth` added the 1-min MAP target and online BIS calibration to run `fourth`; every metric `fourth` also had is within 0.02 of it (0.006 for AUROC and AUPRC).
+Numbers below are from run `sixth` (`models/sixth/metrics.json`, `configs/default.yaml` at commit 9e7ad72) unless a section names another run. Run `sixth` added the 1-min MAP target and online BIS calibration to run `fourth`; every metric `fourth` also had is within 0.02 of it (0.006 for AUROC and AUPRC). Today's simpler config (run `lean`) gives the same results for what it still forecasts: see "The simplified pipeline".
+
+## The simplified pipeline
+
+Ablation showed most of the pipeline's inputs add nothing measurable, so run `lean` (today's `configs/default.yaml`) keeps what the twin uses:
+
+- 2 expert models instead of 5: PAS Marsh (the pumps' own model, which verifies the doses) and AnestheSIM with online BIS calibration (the what-ifs). PAS Schnider, PAS Eleveld and AnestheSIM's separable MAP model went.
+- No expert lookaheads or what-ifs computed at every decision point as features (they added nothing); the twin and `dte effects` simulate a target change when they need its effect.
+- 8 forecasters instead of 20: 1-min MAP, BIS, HR and hypotension at 1 and 5 min. The 1-min forecasts serve the deviation flags.
+- No staleness columns among the features (a stale value is already missing).
+
+Test metrics of what both runs forecast:
+
+| Target | `sixth` | `lean` | `sixth`, sensor faults | `lean`, sensor faults |
+|---|---|---|---|---|
+| 1-min MAP RMSE, 1 min | 6.68 | 6.68 | 6.80 | 6.80 |
+| 1-min MAP RMSE, 5 min | 10.04 | 10.05 | 10.07 | 10.08 |
+| BIS RMSE, 1 min | 5.30 | 5.30 | 5.42 | 5.42 |
+| BIS RMSE, 5 min | 7.31 | 7.32 | 7.33 | 7.34 |
+| HR RMSE, 1 min | 6.03 | 6.04 | 6.09 | 6.10 |
+| HR RMSE, 5 min | 7.28 | 7.28 | 7.30 | 7.30 |
+| Hypotension onset AUROC, 1 min | 0.952 | 0.951 | 0.952 | 0.951 |
+| Hypotension onset AUROC, 5 min | 0.888 | 0.888 | 0.888 | 0.888 |
+| Propofol suggester log loss | 0.189 | 0.189 | 0.190 | 0.190 |
+| Remifentanil suggester log loss | 0.236 | 0.236 | 0.237 | 0.237 |
+
+Every metric is within 0.01 of `sixth`, about what a rerun changes. The alert threshold (10% alert rate) is 0.55, catching 59% of hypotension within 5 min as before; the what-if validation and expert fidelity are unchanged (the same AnestheSIM and PAS Marsh). Rows have 512 columns instead of 836; from cached channels the dataset builds in 18 min instead of 21 (including recomputing PAS Marsh), training takes 27 min instead of 75, and the twin service runs a case 1.8 times faster.
+
+`dte ablate` and `dte transfer` produced the two sections below that name them; they were removed with the simplification (commit 9e7ad72 has them).
 
 ## Forecasts
 
@@ -91,11 +119,11 @@ Mean expected effect and mean residual 5 min after a change, with a 95% interval
 - **MAP**: a propofol change moves MAP the way expected but by about half as much, and the size of single changes isn't predicted (r = 0.03). AnestheSIM underestimates remifentanil's effect on MAP (lowering it raises MAP by about 1 mmHg, not 0.3).
 - **HR**: AnestheSIM expects remifentanil changes to move HR by about 2 bpm; nothing of the kind follows. Its HR what-ifs shouldn't be shown.
 
-So the twin's expected BIS effects can be trusted in direction and roughly in size, its MAP effects in direction only, and its HR effects not at all. Fitting the unified MAP model's propofol effect online as well (`calibrate_map`) brings its MAP error from 15% to 6% MDAPE, ending at about 0.6 of the population effect, in line with the half-size effects above; but its what-ifs agree no better with what follows a change (r = 0.02 to 0.04), so it is off.
+So the twin's expected BIS effects can be trusted in direction and roughly in size, its MAP effects in direction only, and its HR effects not at all. Fitting the unified MAP model's propofol effect online as well (`calibrate_map`) brings its MAP error from 15% to 6% MDAPE, ending at about 0.6 of the population effect, in line with the half-size effects above; but its what-ifs agree no better with what follows a change (r = 0.02 to 0.04), so it was removed (commit 9e7ad72 has it).
 
 ## What each input group adds
 
-`dte ablate` retrains the 5-min forecasters without one group of inputs (run `ablation2`, clean test patients; the variants without experts or covariates differ from "all" by about as much as reruns would):
+`dte ablate` (removed since; commit 9e7ad72) retrained the 5-min forecasters without one group of inputs (run `ablation2`, clean test patients; the variants without experts or covariates differ from "all" by about as much as reruns would):
 
 | Variant | Features | MAP RMSE | BIS RMSE | Hypotension AUROC | Onset AUROC |
 |---|---|---|---|---|---|
@@ -132,7 +160,7 @@ Numbers from run `sixth`'s config. PAS Marsh with Minto is what the Orchestra pu
 
 ## Other patient groups
 
-`dte transfer` trains the 5-min forecasters on one group's training patients and tests them on both groups' test patients (run `transfer`, `configs/default.yaml` as in run `fifth`). The larger group's training data is cut to the size of the smaller one, so the two models learn from equally much. Each cell is the test metric on the "tested on" group; MAP and BIS are RMSE, hypotension is onset AUROC.
+`dte transfer` (removed since; commit 9e7ad72) trained the 5-min forecasters on one group's training patients and tested them on both groups' test patients (run `transfer`, `configs/default.yaml` as in run `fifth`). The larger group's training data is cut to the size of the smaller one, so the two models learn from equally much. Each cell is the test metric on the "tested on" group; MAP and BIS are RMSE, hypotension is onset AUROC.
 
 | Split | Tested on | MAP, own group's model | MAP, other group's model | BIS, own | BIS, other | Onset AUROC, own | Onset AUROC, other |
 |---|---|---|---|---|---|---|---|
